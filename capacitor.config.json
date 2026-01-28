@@ -1,0 +1,5 @@
+{
+  "appId": "com.yourname.pharmacypos",
+  "appName": "pharmacy-pos",
+  "webDir": "dist"
+}

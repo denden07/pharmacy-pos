@@ -1,0 +1,453 @@
+<script setup>
+import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { useStore } from 'vuex'
+import { useRouter } from 'vue-router'
+import Swal from 'sweetalert2'
+
+const store = useStore()
+const router = useRouter()
+
+/* ======================
+   STATE
+====================== */
+const search = ref('')
+const page = ref(1)
+const perPage = ref(10)
+
+const modal = ref(null)
+const pointsModal = ref(null)
+
+const form = ref({
+  id: null,
+  name: '',
+  phone: '',
+  email: '',
+  address: ''
+})
+
+const pointsForm = reactive({
+  customer_id: null,
+  points: 0,
+  note: ''
+})
+
+/* ======================
+   COMPUTED
+====================== */
+const customers = computed(() => store.state.customers.customers)
+
+const filtered = computed(() => {
+  if (!search.value) return customers.value
+  const q = search.value.toLowerCase()
+  return customers.value.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    c.phone?.toLowerCase().includes(q) ||
+    c.email?.toLowerCase().includes(q)
+  )
+})
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filtered.value.length / perPage.value))
+)
+
+const paginated = computed(() => {
+  const start = (page.value - 1) * perPage.value
+  return filtered.value.slice(start, start + perPage.value)
+})
+
+const pageNumbers = computed(() =>
+  Array.from({ length: totalPages.value }, (_, i) => i + 1)
+)
+
+/* ======================
+   WATCHERS
+====================== */
+watch([search, perPage], () => (page.value = 1))
+
+/* ======================
+   LOAD DATA
+====================== */
+onMounted(async () => {
+  await store.dispatch('customers/loadCustomers')
+
+  // attach points
+  for (const c of customers.value) {
+    c.points = await store.dispatch('customers/getCustomerPoints', c.id)
+  }
+})
+
+/* ======================
+   NAVIGATION
+====================== */
+function goToTransactions(customer, tab = 'points') {
+  router.push({
+    name: 'TransactionHistory',
+    params: { id: customer.id },
+    query: { tab } // optional: 'points' or 'purchases'
+  })
+}
+
+
+/* ======================
+   CUSTOMER MODAL
+====================== */
+function openAdd() {
+  form.value = { id: null, name: '', phone: '', email: '', address: '' }
+  modal.value.showModal()
+}
+
+function openEdit(c) {
+  form.value = { ...c }
+  modal.value.showModal()
+}
+
+function close() {
+  modal.value.close()
+}
+
+async function save() {
+  if (!form.value.name) return
+
+  if (form.value.id) {
+    await store.dispatch('customers/editCustomer', form.value)
+  } else {
+    await store.dispatch('customers/addCustomer', form.value)
+  }
+
+  close()
+}
+
+function remove(c) {
+  store.dispatch('customers/deleteCustomer', c)
+}
+
+/* ======================
+   POINTS MODAL
+====================== */
+function openPointsModal(customer) {
+  pointsForm.customer_id = customer.id
+  pointsForm.points = 0
+  pointsForm.note = ''
+  pointsModal.value.showModal()
+}
+
+function closePointsModal() {
+  pointsModal.value.close()
+}
+
+async function savePointsAdjustment() {
+  if (!pointsForm.points) return
+
+  if (pointsModal.value?.open) pointsModal.value.close()
+
+  const confirm = await Swal.fire({
+    title: 'Confirm points adjustment?',
+    text: `Apply ${pointsForm.points > 0 ? 'add' : 'deduct'} points?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, continue'
+  })
+
+  if (!confirm.isConfirmed) {
+    pointsModal.value?.showModal()
+    return
+  }
+
+  await store.dispatch('customers/addManualPoints', {
+    customer_id: pointsForm.customer_id,
+    points: pointsForm.points,
+    note: pointsForm.note
+  })
+
+  Swal.fire({
+    icon: 'success',
+    title: 'Points updated',
+    timer: 1200,
+    showConfirmButton: false
+  })
+
+  await store.dispatch('customers/loadCustomers')
+
+  // refresh points
+  for (const c of customers.value) {
+    c.points = await store.dispatch('customers/getCustomerPoints', c.id)
+  }
+}
+
+/* ======================
+   PAGINATION
+====================== */
+function goPage(p) {
+  if (p < 1 || p > totalPages.value) return
+  page.value = p
+}
+</script>
+
+<template>
+  <div class="medicines-page">
+    <h1>Customers</h1>
+
+    <!-- Top bar -->
+    <div class="top-bar">
+      <div class="top-bar-actions">
+        <input v-model="search" placeholder="Search name / phone / email" class="input" />
+        <select v-model.number="perPage" class="input per-page">
+          <option :value="5">5</option>
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+        </select>
+        <button @click="openAdd">Add Customer</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table class="table w-full">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Points</th>
+            <th class="w-48">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="c in paginated" :key="c.id">
+            <td>{{ c.name }}</td>
+            <td>{{ c.address || '-' }}</td>
+            <td class="font-semibold">{{ c.points }}</td>
+            <td class="flex gap-1">
+              <button class="btn-sm" @click="openEdit(c)">Edit</button>
+              <button class="btn-sm danger" @click="remove(c)">Delete</button>
+              <button class="secondary" @click="openPointsModal(c)">Adjust Points</button>
+              <button class="secondary" @click="goToTransactions(c, 'points')">
+                Transactions
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" v-if="totalPages > 1">
+      <button :disabled="page === 1" @click="goPage(page - 1)">Prev</button>
+      <button v-for="num in pageNumbers" :key="num" @click="goPage(num)" :class="{ active: page === num }">{{ num }}</button>
+      <button :disabled="page === totalPages" @click="goPage(page + 1)">Next</button>
+    </div>
+
+    <!-- CUSTOMER MODAL -->
+    <dialog ref="modal" class="modal">
+      <h3>{{ form.id ? 'Edit Customer' : 'Add Customer' }}</h3>
+
+      <div class="modal-form">
+        <input v-model="form.name" placeholder="Name" />
+        <input v-model="form.address" placeholder="Address" />
+        <input v-model="form.phone" placeholder="Phone" />
+        <input v-model="form.email" placeholder="Email" />
+      </div>
+
+      <div class="modal-actions">
+        <button class="danger" @click="close">Cancel</button>
+        <button @click="save">Save</button>
+      </div>
+    </dialog>
+
+    <!-- POINTS MODAL -->
+    <dialog ref="pointsModal" class="modal">
+      <h3>Adjust Customer Points</h3>
+
+      <div class="modal-form">
+        <input type="number" v-model.number="pointsForm.points" placeholder="Points (+ add / - deduct)" />
+        <input v-model="pointsForm.note" placeholder="Note (optional)" />
+      </div>
+
+      <div class="modal-actions">
+        <button class="danger" @click="closePointsModal">Cancel</button>
+        <button @click="savePointsAdjustment">Save</button>
+      </div>
+    </dialog>
+  </div>
+</template>
+
+
+<style scoped>
+/* ======================
+   PAGE
+====================== */
+.medicines-page {
+  padding: 20px;
+}
+
+/* ======================
+   TOP BAR
+====================== */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.top-bar h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.top-bar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ======================
+   INPUTS (GLOBAL)
+====================== */
+.input,
+select,
+input {
+  height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  color: #222;
+  font-size: 15px;
+}
+
+input::placeholder {
+  color: #888;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #1abc9c;
+  box-shadow: 0 0 0 2px rgba(26, 188, 156, 0.2);
+}
+
+body.dark-mode input,
+body.dark-mode select {
+  background-color: #1c1c1c;
+  border-color: #333;
+  color: #eee;
+}
+
+body.dark-mode input::placeholder {
+  color: #aaa;
+}
+
+/* ======================
+   BUTTONS
+====================== */
+button {
+  height: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background-color: #1abc9c;
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+}
+
+body.dark-mode button {
+  background-color: #16a085;
+}
+
+.danger {
+  background-color: #e74c3c;
+}
+
+/* ======================
+   TABLE
+====================== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 8px;
+}
+
+body.dark-mode th,
+body.dark-mode td {
+  border-color: #333;
+}
+
+.actions-td {
+  display: flex;
+  gap: 6px;
+}
+
+/* ======================
+   PAGINATION
+====================== */
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ======================
+   MODAL
+====================== */
+.modal {
+  border-radius: 12px;
+  padding: 20px;
+  width: 90%;
+  max-width: 420px;
+  background-color: #fff;
+  position: absolute;
+  z-index: 10;
+}
+
+body.dark-mode .modal {
+  background-color: #1e1e1e;
+  color: #eee;
+}
+
+/* STACK INPUTS */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ======================
+   MOBILE
+====================== */
+@media (max-width: 768px) {
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-bar-actions {
+    flex-direction: column;
+  }
+
+  button {
+    width: 100%;
+  }
+}
+
+
+</style>

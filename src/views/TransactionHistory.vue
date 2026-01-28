@@ -1,0 +1,492 @@
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useStore } from 'vuex'
+
+const route = useRoute()
+const store = useStore()
+
+const router = useRouter()
+
+const customerId = Number(route.params.id)
+
+/* ======================
+   STATE
+====================== */
+const activeTab = ref('points')
+const searchKeyword = ref('')
+const sortOrder = ref('desc')
+const currentPage = ref(1)
+const itemsPerPage = ref(10)
+const itemsPerPageOptions = [5, 10, 20, 50]
+
+const showSaleModal = ref(false)
+const selectedSale = ref(null)
+
+/* ======================
+   WATCHERS
+====================== */
+watch([activeTab, searchKeyword, sortOrder], () => {
+  currentPage.value = 1
+})
+
+/* ======================
+   LOAD DATA
+====================== */
+onMounted(async () => {
+  await store.dispatch('transaction/loadPointsHistory', customerId)
+  await store.dispatch('transaction/loadSales', customerId)
+})
+
+/* ======================
+   VUEX SOURCES
+====================== */
+const pointsHistory = computed(() =>
+  store.state.transaction.pointsHistory
+)
+
+const sales = computed(() =>
+  store.state.transaction.sales
+)
+
+/* ======================
+   FILTERED DATA
+====================== */
+const filteredPoints = computed(() => {
+  return pointsHistory.value
+    .filter(p =>
+      !searchKeyword.value ||
+      String(p.related_sale_id || '').includes(searchKeyword.value) ||
+      String(p.date).includes(searchKeyword.value)
+    )
+    .sort((a, b) =>
+      sortOrder.value === 'asc'
+        ? new Date(a.date) - new Date(b.date)
+        : new Date(b.date) - new Date(a.date)
+    )
+})
+
+const filteredSales = computed(() => {
+  return sales.value
+    .filter(s =>
+      !searchKeyword.value ||
+      String(s.id).includes(searchKeyword.value) ||
+      String(s.created_at).includes(searchKeyword.value)
+    )
+    .sort((a, b) =>
+      sortOrder.value === 'asc'
+        ? new Date(a.created_at) - new Date(b.created_at)
+        : new Date(b.created_at) - new Date(a.created_at)
+    )
+})
+
+/* ======================
+   PAGINATION
+====================== */
+const activeList = computed(() =>
+  activeTab.value === 'points' ? filteredPoints.value : filteredSales.value
+)
+
+const totalPages = computed(() =>
+  Math.ceil(activeList.value.length / itemsPerPage.value)
+)
+
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return activeList.value.slice(start, start + itemsPerPage.value)
+})
+
+const goPage = (page) => {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+  }
+}
+
+const pageNumbers = computed(() =>
+  Array.from({ length: totalPages.value }, (_, i) => i + 1)
+)
+
+function goBack() {
+  router.push({ name: 'Customers' })
+}
+
+/* ======================
+   MODAL
+====================== */
+const openSaleModal = (sale) => {
+  selectedSale.value = sale
+  showSaleModal.value = true
+}
+
+const closeSaleModal = () => {
+  showSaleModal.value = false
+  selectedSale.value = null
+}
+</script>
+
+<template>
+  <div class="medicines-page">
+    <h1>Customer Transactions</h1>
+
+    <div class="top-bar">
+      <button class="secondary back-btn" @click="goBack">← Back to Customers</button>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button
+        :class="{ active: activeTab === 'points' }"
+        @click="activeTab = 'points'"
+      >
+        Points History
+      </button>
+
+      <button
+        :class="{ active: activeTab === 'purchases' }"
+        @click="activeTab = 'purchases'"
+      >
+        Purchase History
+      </button>
+    </div>
+
+    <!-- TOP BAR -->
+    <div class="top-bar">
+      <input v-model="searchKeyword" placeholder="Search..." />
+      <select v-model="sortOrder">
+        <option value="desc">Newest</option>
+        <option value="asc">Oldest</option>
+      </select>
+      <select v-model.number="itemsPerPage">
+        <option v-for="o in itemsPerPageOptions" :key="o" :value="o">
+          {{ o }}
+        </option>
+      </select>
+    </div>
+
+    <!-- POINTS HISTORY -->
+    <table v-if="activeTab === 'points'">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Points</th>
+          <th>Type</th>
+          <th>Notes</th>
+          <th>Sale #</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="p in paginatedData" :key="p.id">
+          <td>{{ new Date(p.date).toLocaleString() }}</td>
+          <td :class="p.points > 0 ? 'points-plus' : 'points-minus'">
+            {{ p.points > 0 ? '+' : '' }}{{ p.points }}
+          </td>
+          <td>{{ p.type }}</td>
+          <td>{{ p.description || '-' }}</td>
+          <td>
+            <span
+              v-if="p.related_sale_id"
+              class="sale-link"
+              @click="openSaleModal(
+                sales.find(s => s.id === p.related_sale_id)
+              )"
+            >
+              #{{ p.related_sale_id }}
+            </span>
+            <span v-else>—</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- PURCHASE HISTORY -->
+    <table v-if="activeTab === 'purchases'">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Sale #</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="s in paginatedData"
+          :key="s.id"
+          @click="openSaleModal(s)"
+          style="cursor:pointer"
+        >
+          <td>{{ new Date(s.created_at).toLocaleString() }}</td>
+          <td>#{{ s.id }}</td>
+          <td>₱{{ (s.final_total || 0).toFixed(2) }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- PAGINATION -->
+    <div class="pagination" v-if="totalPages > 1">
+      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">
+        Prev
+      </button>
+      <button
+        v-for="n in pageNumbers"
+        :key="n"
+        @click="goPage(n)"
+        :class="{ active: currentPage === n }"
+      >
+        {{ n }}
+      </button>
+      <button
+        @click="goPage(currentPage + 1)"
+        :disabled="currentPage === totalPages"
+      >
+        Next
+      </button>
+    </div>
+
+    <!-- SALE MODAL -->
+    <div v-if="showSaleModal" class="modal-overlay">
+      <div class="modal">
+        <h2>Sale #{{ selectedSale.id }}</h2>
+        <p>Date: {{ new Date(selectedSale.created_at).toLocaleString() }}</p>
+        <p>Total: ₱{{ (selectedSale.final_total || 0).toFixed(2) }}</p>
+
+        <button @click="closeSaleModal">Close</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+  /* ======================
+   PAGE
+====================== */
+.medicines-page {
+  margin: auto;
+  padding: 20px;
+  overflow-x: hidden;
+}
+
+body.dark-mode .medicines-page {
+  background-color: #121212;
+  color: #eee;
+}
+
+/* ======================
+   TABS
+====================== */
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tabs button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #ddd;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tabs button.active {
+  background: #1abc9c;
+  color: #fff;
+}
+
+body.dark-mode .tabs button {
+  background: #333;
+  color: #eee;
+}
+
+body.dark-mode .tabs button.active {
+  background: #16a085;
+}
+
+/* ======================
+   TOP BAR
+====================== */
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.top-bar input,
+.top-bar select {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #222;
+}
+
+body.dark-mode .top-bar input,
+body.dark-mode .top-bar select {
+  background: #1c1c1c;
+  border-color: #333;
+  color: #eee;
+}
+
+/* ======================
+   TABLE
+====================== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  background: #fff;
+}
+
+body.dark-mode table {
+  background: #181818;
+}
+
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: left;
+}
+
+body.dark-mode th,
+body.dark-mode td {
+  border-color: #333;
+}
+
+tbody tr:hover {
+  background: #f5f5f5;
+}
+
+body.dark-mode tbody tr:hover {
+  background: #222;
+}
+
+/* ======================
+   POINT COLORS
+====================== */
+.points-plus {
+  color: #1abc9c;
+  font-weight: 600;
+}
+
+.points-minus {
+  color: #e74c3c;
+  font-weight: 600;
+}
+
+/* ======================
+   SALE LINK
+====================== */
+.sale-link {
+  color: #3498db;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sale-link:hover {
+  text-decoration: underline;
+}
+
+/* ======================
+   PAGINATION
+====================== */
+.pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pagination button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: #1abc9c;
+  color: #fff;
+  cursor: pointer;
+}
+
+.pagination button.active {
+  background: #16a085;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ======================
+   MODAL
+====================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.modal {
+  background: #fff;
+  padding: 20px;
+  border-radius: 14px;
+  min-width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3);
+}
+
+body.dark-mode .modal {
+  background: #1c1c1c;
+  color: #eee;
+}
+
+/* modal content */
+.modal h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.modal p {
+  margin: 6px 0;
+}
+
+/* modal button */
+.modal button {
+  margin-top: 14px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #1abc9c;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal button:hover {
+  background: #16a085;
+}
+
+.back-btn {
+  background: #3498db;
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back-btn:hover {
+  background: #2980b9;
+}
+
+body.dark-mode .back-btn {
+  background: #2980b9;
+}
+
+
+</style>
