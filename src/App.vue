@@ -30,8 +30,7 @@ import Sidebar from '../src/components/Sidebar.vue'
 .main-content {
   /* margin-left: 220px; */
   padding: 16px;
-  min-height: 100vh;
-  overflow-y: auto;
+   /* min-height: 100vh; */
   width:100%
 }
 
