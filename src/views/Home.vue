@@ -2,10 +2,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import Swal from 'sweetalert2'
+import { dbPromise } from '../db'
 
 const store = useStore()
 
+// ======================
 // POS refs
+// ======================
 const search = ref('')
 const selectedMedicine = ref(null)
 const selectedPriceType = ref('regular')
@@ -17,18 +20,40 @@ const showCustomerModal = ref(false)
 const customerSearch = ref('')
 const newCustomer = ref({ name:'', phone:'', address:'' })
 
+// ======================
+// REDEEM POINTS
+// ======================
+const showRedeemModal = ref(false)
+const customerPoints = ref(0)
+const redeemMultiplier = ref(1)
+const pointsConfirmed = ref(false)
+
+const pointsUsed = computed(() => {
+  if (!pointsConfirmed.value) return 0
+  return redeemMultiplier.value * customerPoints.value
+})
+
+
+const pointsDiscount = computed(() => pointsUsed.value) // ₱1 = 1pt
+
+// ======================
 // Focus tracking for number pad
+// ======================
 const focusedItem = ref(null)
-const focusedField = ref('') // 'qty' | 'professionalFee' | 'moneyGiven'
+const focusedField = ref('')
+
 const setActiveInput = (item, field) => {
   focusedItem.value = item
   focusedField.value = field
 }
 
+// ======================
 // Number pad functions
+// ======================
 const appendNumber = (num) => {
   if (!focusedField.value) return
-  if (focusedField.value === 'qty') {
+
+  if (focusedField.value === 'qty' && focusedItem.value) {
     focusedItem.value.qty = Number(String(focusedItem.value.qty) + num)
   } else if (focusedField.value === 'professionalFee') {
     professionalFee.value = Number(String(professionalFee.value) + num)
@@ -36,26 +61,30 @@ const appendNumber = (num) => {
     moneyGiven.value = Number(String(moneyGiven.value) + num)
   }
 }
+
 const backspace = () => {
   if (!focusedField.value) return
-  if (focusedField.value === 'qty') {
-    focusedItem.value.qty = Number(String(focusedItem.value.qty).slice(0,-1) || 0)
+
+  if (focusedField.value === 'qty' && focusedItem.value) {
+    focusedItem.value.qty = Number(String(focusedItem.value.qty).slice(0, -1) || 0)
   } else if (focusedField.value === 'professionalFee') {
-    professionalFee.value = Number(String(professionalFee.value).slice(0,-1) || 0)
+    professionalFee.value = Number(String(professionalFee.value).slice(0, -1) || 0)
   } else if (focusedField.value === 'moneyGiven') {
-    moneyGiven.value = Number(String(moneyGiven.value).slice(0,-1) || 0)
+    moneyGiven.value = Number(String(moneyGiven.value).slice(0, -1) || 0)
   }
 }
+
 const clearInput = () => {
   if (!focusedField.value) return
-  if (focusedField.value === 'qty') focusedItem.value.qty = 0
+
+  if (focusedField.value === 'qty' && focusedItem.value) focusedItem.value.qty = 1
   else if (focusedField.value === 'professionalFee') professionalFee.value = 0
   else if (focusedField.value === 'moneyGiven') moneyGiven.value = 0
 }
 
-/* ======================
-   LOAD MEDICINES & CUSTOMERS
-====================== */
+// ======================
+// LOAD MEDICINES & CUSTOMERS
+// ======================
 onMounted(async () => {
   if (!store.state.medicines.medicines.length) {
     await store.dispatch('medicines/loadMedicines')
@@ -83,64 +112,106 @@ const filteredCustomers = computed(() => {
   )
 })
 
-/* ======================
-   CART LOGIC
-====================== */
+// ======================
+// CART LOGIC
+// ======================
 const addToCart = (med) => {
-  const price = selectedPriceType.value==='regular'? med.price1: med.price2
-  const existing = cart.value.find(i => i.id===med.id && i.priceType===selectedPriceType.value)
-  if(existing){ 
+  const price = selectedPriceType.value === 'regular' ? med.price1 : med.price2
+  const existing = cart.value.find(i => i.id === med.id && i.priceType === selectedPriceType.value)
+
+  if (existing) {
     existing.qty += 1
-  }
-  else{
-    cart.value.push({ 
+  } else {
+    cart.value.push({
       id: med.id,
       name: med.name,
-      generic_name: med.generic_name||'',
-      priceType:selectedPriceType.value,
+      generic_name: med.generic_name || '',
+      priceType: selectedPriceType.value,
       price,
       qty: 1
     })
   }
-  selectedMedicine.value = null
+
   search.value = ''
 }
 
-const removeItem = (id) => { cart.value = cart.value.filter(i => i.id!==id) }
-const updatePriceType = (item, type) => {
-  item.priceType = type
-  const med = medicines.value.find(m => m.id===item.id)
-  item.price = type==='regular'? med.price1 : med.price2
+const removeItem = (id) => {
+  cart.value = cart.value.filter(i => i.id !== id)
 }
 
-/* ======================
-   TOTALS
-====================== */
-const subTotal = computed(() => cart.value.reduce((sum,i)=>sum+i.price*i.qty,0))
-const grandTotal = computed(() => Math.max(subTotal.value + Number(professionalFee.value || 0),0))
-const change = computed(()=>Math.max((moneyGiven.value || 0) - grandTotal.value,0))
+const updatePriceType = (item, type) => {
+  item.priceType = type
+  const med = medicines.value.find(m => m.id === item.id)
+  item.price = type === 'regular' ? med.price1 : med.price2
+}
 
-/* ======================
-   CHECKOUT
-====================== */
+// ======================
+// TOTALS
+// ======================
+const subTotal = computed(() =>
+  cart.value.reduce((sum, i) => sum + i.price * i.qty, 0)
+)
+
+const grandTotal = computed(() => {
+  const total =
+    Number(subTotal.value) +
+    Number(professionalFee.value || 0) -
+    Number(pointsDiscount.value || 0)
+
+  return total < 0 ? 0 : total
+})
+
+const change = computed(() =>
+  Math.max((moneyGiven.value || 0) - grandTotal.value, 0)
+)
+
+// ======================
+// REDEEM FLOW
+// ======================
+const openRedeemModal = () => {
+  if (!selectedCustomer.value) {
+    Swal.fire('Select customer first')
+    return
+  }
+  redeemMultiplier.value = 1
+  showRedeemModal.value = true
+}
+
+const confirmPoints = () => {
+  pointsConfirmed.value = true
+  showRedeemModal.value = false
+}
+
+const removePoints = () => {
+  pointsConfirmed.value = false
+  redeemMultiplier.value = 1
+}
+
+// ======================
+// CHECKOUT
+// ======================
 const checkout = async () => {
-  if(!cart.value.length){ 
-    Swal.fire({icon:'warning', title:'Empty cart', text:'Please add items before saving the sale.'})
+  if (!cart.value.length) {
+    Swal.fire({ icon:'warning', title:'Empty cart', text:'Please add items before saving the sale.' })
     return
   }
-  if((moneyGiven.value || 0) < grandTotal.value){
-    Swal.fire({icon:'warning', title:'Insufficient payment', text:'Customer money is less than total.'})
+
+  if ((moneyGiven.value || 0) < grandTotal.value) {
+    Swal.fire({ icon:'warning', title:'Insufficient payment', text:'Customer money is less than total.' })
     return
   }
+
 
   const result = await Swal.fire({
     title:'Confirm Sale',
-    html:`
+    html: `
       <p><strong>Subtotal:</strong> ₱${subTotal.value.toFixed(2)}</p>
       <p><strong>Professional Fee:</strong> ₱${professionalFee.value || 0}</p>
+      <p><strong>Points Discount:</strong> -₱${pointsDiscount.value}</p>
       <p><strong>Money Given:</strong> ₱${moneyGiven.value || 0}</p>
-      <p><strong>Change:</strong> ₱${change.value.toFixed(2)}</p>
+     
       <hr/>
+      <h3><strong>Change:</strong> ₱${change.value.toFixed(2)}</h3>
       <h3>Total: ₱${grandTotal.value.toFixed(2)}</h3>
     `,
     icon:'question',
@@ -149,44 +220,101 @@ const checkout = async () => {
     cancelButtonText:'Cancel',
     reverseButtons:true
   })
-  if(!result.isConfirmed) return
 
-  try{
+  if (!result.isConfirmed) return
+
+  try {
     const saleId = await store.dispatch('sales/saveSale', {
       customer_id: selectedCustomer.value?.id || null,
-      cart: cart.value,           // ✅ pass the actual array
+      cart: cart.value,
       subTotal: subTotal.value,
       professionalFee: professionalFee.value || 0,
+      discount: pointsDiscount.value,
       finalTotal: grandTotal.value,
       moneyGiven: moneyGiven.value || 0,
-      change: change.value
+      change: change.value,
+      pointsUsed: pointsUsed.value
     })
 
-    await Swal.fire({icon:'success', title:'Sale Saved', text:`Sale #${saleId} saved.`, timer:1500, showConfirmButton:false})
+    await Swal.fire({
+      icon:'success',
+      title:'Sale Saved',
+      text:`Sale #${saleId} saved.`,
+      timer:1500,
+      showConfirmButton:false
+    })
 
+    // reset POS
     cart.value = []
     professionalFee.value = 0
     moneyGiven.value = 0
     selectedCustomer.value = null
+    customerPoints.value = 0
+    redeemMultiplier.value = 1
+    pointsConfirmed.value = false
 
-  } catch(err){
+  } catch (err) {
     console.error(err)
-    Swal.fire({icon:'error', title:'Save failed', text:'Something went wrong while saving the sale.'})
+    Swal.fire({ icon:'error', title:'Save failed', text:'Something went wrong while saving the sale.' })
   }
 }
 
-/* ======================
-   CUSTOMERS
-====================== */
-const selectCustomer = (cust) => { selectedCustomer.value=cust; showCustomerModal.value=false }
+
+// ======================
+// CUSTOMERS
+// ======================
+const selectCustomer = async (cust) => {
+  selectedCustomer.value = cust
+  showCustomerModal.value = false
+
+  const db = await dbPromise
+  const year = new Date().getFullYear()
+  const yearly = await db.get('yearly_points', [cust.id, year])
+
+  customerPoints.value = yearly?.points || 0
+  redeemMultiplier.value = 1
+  pointsConfirmed.value = false
+}
+
 const addCustomer = async () => {
-  if(!newCustomer.value.name) return
+  if (!newCustomer.value.name) return
+
   const id = await store.dispatch('customers/addCustomer', newCustomer.value)
   selectedCustomer.value = { id, ...newCustomer.value }
+
+  customerPoints.value = 0
+  redeemMultiplier.value = 1
+  pointsConfirmed.value = false
+
   newCustomer.value = { name:'', phone:'', address:'' }
-  showCustomerModal.value=false
+  showCustomerModal.value = false
 }
+
+const setPriceType = (item, type) => {
+  const med = medicines.value.find(m => m.id === item.id)
+  if (!med) return
+
+  if (type === 'regular') {
+    item.priceType = 'regular'
+    item.price = Number(med.price1)
+  } else {
+    item.priceType = 'discount'
+    item.price = Number(med.price2 || med.price1)
+  }
+}
+
+const getPrice = (medId, type) => {
+  const med = medicines.value.find(m => m.id === medId)
+  if (!med) return 0
+
+  return type === 'regular'
+    ? Number(med.price1).toFixed(2)
+    : Number(med.price2 || med.price1).toFixed(2)
+}
+
+
 </script>
+
 
 <template>
 <h1 style="font-size: 32px;">Calculator</h1>
@@ -205,17 +333,43 @@ const addCustomer = async () => {
   </div>
 </div>
 
-<!-- Selected Customer Badge -->
-<p style="    display: flex;
-    justify-content: center;
+<!-- Selected Customer Badge + Redeem Buttons -->
+<div style="display: flex;
     align-items: center;
-    gap: 10px;"><strong>Sold to:</strong> 
-  <span v-if="selectedCustomer" class="selected-customer">
-    <span style="font-size: 16px">👤 {{ selectedCustomer.name }}</span>
-    <small style="font-size: 16px" v-if="selectedCustomer.address">({{ selectedCustomer.address }})</small>
-  </span>
-  <button v-if="selectedCustomer" class="mini danger" @click="selectedCustomer=null">✕</button>
-</p>
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 16px;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <strong>Sold to:</strong> 
+    <span v-if="selectedCustomer" class="selected-customer">
+      👤 {{ selectedCustomer.name }}
+      <small v-if="selectedCustomer.address">({{ selectedCustomer.address }})</small>
+    </span>
+    <button v-if="selectedCustomer" class="mini danger" @click="selectedCustomer=null">✕</button>
+  </div>
+
+  <!-- Redeem / Remove Points -->
+  <div v-if="selectedCustomer" style="display:flex; gap:4px;">
+    <button 
+      v-if="!pointsConfirmed" 
+      class="mini regular" 
+      @click="openRedeemModal"
+    >
+      🎁 Redeem Points
+    </button>
+
+    <button 
+      v-if="pointsConfirmed" 
+      class="mini danger" 
+      @click="removePoints"
+    >
+      Remove Points
+    </button>
+  </div>
+</div>
+
+
 
 <div class="pos-layout">
   <!-- CENTER: CART -->
@@ -224,7 +378,7 @@ const addCustomer = async () => {
       <table v-if="cart.length">
         <thead>
           <tr>
-            <th>Item</th>
+            <th width="20%">Medicine</th>
             <th>Price</th>
             <th>Qty</th>
             <th>Total</th>
@@ -232,16 +386,26 @@ const addCustomer = async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in cart" :key="item.id + item.priceType">
+          <tr v-for="item in cart" :key="item.id">
             <td>
               <div class="med-name-table">{{ item.name }}</div>
               <div class="med-generic" v-if="item.generic_name">{{ item.generic_name }}</div>
             </td>
             <td>
-              <div class="price-cell">
-                <button class="mini regular" :class="{ activePrice: item.priceType==='regular' }" @click="updatePriceType(item,'regular')">Regular</button>
-                <button class="mini discounted" :class="{ activePrice: item.priceType==='discounted' }" @click="updatePriceType(item,'discounted')">Discount</button>
-                <span>₱{{ item.price }}</span>
+              <div class="price-toggle">
+                <button
+                  :class="{ active: item.priceType === 'regular', inactive: item.priceType !== 'regular' }"
+                  @click="setPriceType(item, 'regular')"
+                >
+                  Regular ₱{{ getPrice(item.id, 'regular') }}
+                </button>
+
+                <button
+                  :class="{ active: item.priceType === 'discount', inactive: item.priceType !== 'discount' }"
+                  @click="setPriceType(item, 'discount')"
+                >
+                  Discount ₱{{ getPrice(item.id, 'discount') }}
+                </button>
               </div>
             </td>
             <td>
@@ -258,22 +422,41 @@ const addCustomer = async () => {
               </div>
             </td>
             <td>₱{{ (item.price * item.qty).toFixed(2) }}</td>
-            <td><button class="mini danger" @click="removeItem(item.id)">✕</button></td>
+            <td>
+              <button class="mini danger button-remove-med" @click="removeItem(item.id)">✕</button>
+            </td>
           </tr>
         </tbody>
       </table>
       <p v-else>No items</p>
     </div>
 
-    <!-- Totals below table -->
+    <!-- Totals -->
     <div class="cart-totals">
-      <p><strong>Subtotal:</strong> ₱{{ subTotal.toFixed(2) }}</p>
-      <p><strong>Grand Total:</strong> ₱{{ grandTotal.toFixed(2) }}</p>
-      <p ><strong>Change:</strong> <span style="color: red;">₱{{ change.toFixed(2) }}</span> </p>
+      <div>
+        <span>Subtotal</span>
+        <strong>₱{{ subTotal.toFixed(2) }}</strong>
+      </div>
+
+      <div>
+        <span>Discount</span>
+        <strong>-₱{{ pointsDiscount }}</strong>
+      </div>
+
+      <div class="grand">
+        <span><strong>Grand Total</strong></span>
+        <strong>₱{{ grandTotal.toFixed(2) }}</strong>
+      </div>
+
+      <div class="change">
+        <span><strong>Change</strong></span>
+        <strong>₱{{ change.toFixed(2) }}</strong>
+      </div>
     </div>
+
   </div>
 
-  <!-- RIGHT PANEL: Inputs + Number Pad -->
+  <!-- RIGHT PANEL -->
   <div class="right-panel">
     <label>
       Professional Fee
@@ -319,7 +502,7 @@ const addCustomer = async () => {
 
 <!-- CUSTOMER MODAL -->
 <div v-if="showCustomerModal" class="modal-backdrop">
-  <div class="modal">
+  <div class="modal modal-customer">
     <h3>Select Customer</h3>
 
     <input
@@ -336,18 +519,16 @@ const addCustomer = async () => {
         @click="selectCustomer(c)"
       >
         <strong>{{ c.name }}</strong>
-        <small v-if="c.phone || c.address">
-          {{ c.phone }} <span v-if="c.address">- {{ c.address }}</span>
-        </small>
+        <small>{{ c.address }}</small>
       </div>
     </div>
 
     <hr/>
     <h4>Add New Customer</h4>
     <div class="new-customer-form">
-      <label>Name<input class="input" v-model="newCustomer.name" placeholder="Customer Name" /></label>
-      <label>Phone<input class="input" v-model="newCustomer.phone" placeholder="Phone Number" /></label>
-      <label>Address<input class="input" v-model="newCustomer.address" placeholder="Address" /></label>
+      <label>Name<input class="input" v-model="newCustomer.name" /></label>
+      <label>Address<input class="input" v-model="newCustomer.address" /></label>
+      <label>Phone<input class="input" v-model="newCustomer.phone" /></label>
     </div>
 
     <div class="modal-actions">
@@ -356,11 +537,33 @@ const addCustomer = async () => {
     </div>
   </div>
 </div>
+
+<!-- REDEEM MODAL -->
+<div v-if="showRedeemModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Redeem Points</h3>
+    <p>Available: <strong>{{ customerPoints }}</strong></p>
+
+    <div class="qty-wrapper">
+      <button @click="redeemMultiplier = Math.max(1, redeemMultiplier - 1)">-</button>
+      <input type="number" :value="redeemMultiplier" readonly />
+      <button @click="redeemMultiplier += 1">+</button>
+    </div>
+
+    <p>
+      Discount: <strong>₱{{ redeemMultiplier * customerPoints }}</strong>
+    </p>
+
+    <div class="modal-actions">
+      <button class="btn checkout" @click="confirmPoints">Apply</button>
+      <button class="btn danger" @click="showRedeemModal=false">Cancel</button>
+    </div>
+  </div>
+</div>
 </template>
 
-
 <style scoped>
-/* =========================
+  /* =========================
    SEARCH BAR
 ========================= */
 .search-bar {
@@ -417,6 +620,7 @@ const addCustomer = async () => {
   display: flex;
   gap: 14px;
   min-height: 400px;
+  min-height: calc(100vh - 120px); 
 }
 
 /* =========================
@@ -465,14 +669,43 @@ th, td {
 
 /* Totals below table */
 .cart-totals {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0px 12px;
   padding: 10px;
   border-top: 1px solid #ccc;
   background: #f9f9f9;
-  font-size: 20px
+  font-size: 18px;
+  text-align: center;
 }
+
+.cart-totals div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cart-totals span {
+  font-size: 13px;
+  color: #555;
+}
+
+.cart-totals strong {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Emphasis */
+.cart-totals .grand strong {
+  color: #28a745; /* GREEN */
+  font-size: 26px;
+}
+
+.cart-totals .change strong {
+  color: #e74c3c; /* RED */
+  font-size: 26px;
+}
+
 
 /* =========================
    RIGHT PANEL
@@ -590,6 +823,12 @@ th, td {
   background: red
 }
 
+
+.mini.regular {
+  background: #2980b9
+}
+
+
 /* =========================
    SELECTED CUSTOMER BADGE
 ========================= */
@@ -598,7 +837,7 @@ th, td {
   border-radius: 8px;
   background: #e6f7ff;
   border: 1px solid #3498db;
-  font-size: 13px;
+  font-size: 16px;
   margin-top: 6px;
 }
 
@@ -705,11 +944,11 @@ th, td {
 .modal .input,
 .modal input {
   width: 100%;
-  height: 38px;
-  border-radius: 8px;
+  height: 44px;
+  border-radius: 10px;
   border: 1px solid #ccc;
-  padding: 0 12px;
-  font-size: 14px;
+  padding: 0 14px;
+  font-size: 15px;
   background: #fff;
   color: #222;
   box-sizing: border-box;
@@ -728,6 +967,11 @@ th, td {
 /* Customer search field */
 .modal .pos-medicine-search {
   width: 100%;
+  height: 44px;
+  font-size: 15px;
+  padding: 0 14px;
+  border-radius: 10px;
+  box-sizing: border-box;
 }
 
 /* Modal buttons aligned */
@@ -738,6 +982,17 @@ th, td {
 }
 .modal-actions .btn {
   flex: 1;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-actions .btn.checkout,
+.modal-actions .btn.danger {
+  width: 100%;
 }
 
 /* Customer rows cleaner */
@@ -747,69 +1002,34 @@ th, td {
   gap: 2px;
 }
 
-/* Dark mode fix */
-.dark .modal .input,
-.dark .modal input {
-  background: #333;
-  color: #fff;
-  border-color: #555;
-}
-
-/* =========================
-   MODAL INPUT & BUTTON HEIGHT FIX
-========================= */
-
-/* Search customer input */
-.modal .pos-medicine-search {
-  height: 38px;
-  border-radius: 8px;
-  padding: 0 12px;
-  font-size: 14px;
-}
-
-/* Buttons same height as inputs */
-.modal-actions .btn {
-  height: 38px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Ensure Save & Cancel are equal width */
-.modal-actions .btn.checkout,
-.modal-actions .btn.danger {
-  width: 100%;
-}
-
-
-.modal .pos-medicine-search {
-  width: 100%;
-  height: 44px;          /* same as top search bar */
-  font-size: 15px;
-  padding: 0 14px;
-  border-radius: 10px;
-  box-sizing: border-box;
-}
-
-/* =========================
-   PREVENT FLEX SHRINK IN MODAL
-========================= */
+/* Prevent flex shrink in modal */
 .modal > * {
   flex-shrink: 0;
 }
 
-/* Force modal inputs to keep their size */
-.modal input,
-.modal .pos-medicine-search {
-  flex-shrink: 0;
-  min-height: 44px;
-  height: 44px;
-  box-sizing: border-box;
+.modal-customer {
+  display: block;
 }
 
+.price-toggle {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
 
+.price-toggle button.active {
+  background-color: green;
+  color: white;
+}
+
+.price-toggle button.inactive {
+  background-color: gray;
+  color: white;
+}
+
+.button-remove-med {
+  padding: 2px 5px !important;
+  color: #fff !important
+}
 
 </style>

@@ -2,8 +2,12 @@
 import { ref, computed, onMounted, watch, toRaw } from 'vue'
 import Swal from 'sweetalert2'
 import { useStore } from 'vuex'
+import { useRouter } from 'vue-router'
+
 
 const store = useStore()
+const router = useRouter()
+
 
 /* ======================
    FILTERS & PAGINATION
@@ -29,8 +33,14 @@ const modalMode = ref('edit') // 'edit' or 'add'
 const selectedSale = ref(null)
 const saleItems = ref([])
 
-const editSale = ref(null)
-const editItems = ref([])
+// const editSale = ref(null)
+// const editItems = ref([])
+
+const fmt = (v) => {
+  const n = Number(v)
+  return isNaN(n) ? '0.00' : n.toFixed(2)
+}
+
 
 
 // Compute change based on current total
@@ -101,75 +111,75 @@ const viewSale = async (sale) => {
 /* ======================
    OPEN EDIT / ADD MODAL
 ====================== */
-const openEdit = async (sale) => {
-  modalMode.value = 'edit'
+// const openEdit = async (sale) => {
+//   modalMode.value = 'edit'
 
-  try {
-    // 1️⃣ Get sale items
-    const items = await store.dispatch('sales/viewSale', sale.id)
-    if (!items || !Array.isArray(items)) {
-      Swal.fire('Error', 'No sale items found', 'error')
-      return
-    }
+//   try {
+//     // 1️⃣ Get sale items
+//     const items = await store.dispatch('sales/viewSale', sale.id)
+//     if (!items || !Array.isArray(items)) {
+//       Swal.fire('Error', 'No sale items found', 'error')
+//       return
+//     }
 
-    // 2️⃣ Get all medicines to map their current prices
-    const allMedicines = store.state.medicines.medicines || []
-    const medsMap = Object.fromEntries(allMedicines.map(m => [m.id, m]))
+//     // 2️⃣ Get all medicines to map their current prices
+//     const allMedicines = store.state.medicines.medicines || []
+//     const medsMap = Object.fromEntries(allMedicines.map(m => [m.id, m]))
 
-    // 3️⃣ Set editSale
-    editSale.value = { ...sale }
+//     // 3️⃣ Set editSale
+//     editSale.value = { ...sale }
 
-    // 4️⃣ Map items with regular & discounted price tracking
-    editItems.value = items.map(i => {
-      const med = medsMap[i.medicine_id] || {}
-      const regular = Number(med.price1) ?? i.price_at_sale ?? 0
-      const discounted = Number(med.price2) ?? i.price_at_sale ?? 0
+//     // 4️⃣ Map items with regular & discounted price tracking
+//     editItems.value = items.map(i => {
+//       const med = medsMap[i.medicine_id] || {}
+//       const regular = Number(med.price1) ?? i.price_at_sale ?? 0
+//       const discounted = Number(med.price2) ?? i.price_at_sale ?? 0
 
-      return {
-        id: i.id,
-        medicine_id: i.medicine_id,
-        medicine_name: i.medicine_name || med.name || 'Unknown',
-        generic_name: i.generic_name || med.generic_name || '',
-        qty: i.quantity ?? 1,
+//       return {
+//         id: i.id,
+//         medicine_id: i.medicine_id,
+//         medicine_name: i.medicine_name || med.name || 'Unknown',
+//         generic_name: i.generic_name || med.generic_name || '',
+//         qty: i.quantity ?? 1,
 
-        // price at time of sale
-        price: i.price_at_sale ?? regular,
+//         // price at time of sale
+//         price: i.price_at_sale ?? regular,
 
-        // snapshot of medicine prices at that time
-        regular_price: regular,
-        discounted_price: discounted,
+//         // snapshot of medicine prices at that time
+//         regular_price: regular,
+//         discounted_price: discounted,
 
-        // detect which was used in the sale
-        price_mode: i.price_type ?? 'regular'
-      }
-    })
+//         // detect which was used in the sale
+//         price_mode: i.price_type ?? 'regular'
+//       }
+//     })
 
-    // 5️⃣ Set customer
-    selectedCustomer.value = customers.value.find(c => c.id === sale.customer_id) || null
-    customerKeyword.value = ''
+//     // 5️⃣ Set customer
+//     selectedCustomer.value = customers.value.find(c => c.id === sale.customer_id) || null
+//     customerKeyword.value = ''
 
-    // 6️⃣ Show modal
-    showEdit.value = true
+//     // 6️⃣ Show modal
+//     showEdit.value = true
 
-  } catch (err) {
-    console.error(err)
-    Swal.fire('Error', 'Failed to open edit modal: ' + err.message, 'error')
-  }
-}
+//   } catch (err) {
+//     console.error(err)
+//     Swal.fire('Error', 'Failed to open edit modal: ' + err.message, 'error')
+//   }
+// }
 
-const openAddSale = () => {
-  modalMode.value = 'add'
-  editSale.value = {
-    customer_id: null,
-    purchased_date: '',
-    professional_fee: 0,
-    discount: 0
-  }
-  editItems.value = []
-  selectedCustomer.value = null
-  customerKeyword.value = ''
-  showEdit.value = true
-}
+// const openAddSale = () => {
+//   modalMode.value = 'add'
+//   editSale.value = {
+//     customer_id: null,
+//     purchased_date: '',
+//     professional_fee: 0,
+//     discount: 0
+//   }
+//   editItems.value = []
+//   selectedCustomer.value = null
+//   customerKeyword.value = ''
+//   showEdit.value = true
+// }
 
 /* ======================
    MEDICINE SEARCH
@@ -232,78 +242,78 @@ const editGrandTotal = computed(() =>
 /* ======================
    SAVE SALE / EDIT
 ====================== */
-const saveModalSale = async () => {
-  if (!editItems.value.length) {
-    Swal.fire('Error', 'No items in the sale', 'error')
-    return
-  }
+// const saveModalSale = async () => {
+//   if (!editItems.value.length) {
+//     Swal.fire('Error', 'No items in the sale', 'error')
+//     return
+//   }
 
-  // Use money from editSale.money_given
-  const money = parseFloat(editSale.value?.money_given)
-  if (isNaN(money)) {
-    Swal.fire('Error', 'Invalid amount for Money Given', 'error')
-    return
-  }
+//   // Use money from editSale.money_given
+//   const money = parseFloat(editSale.value?.money_given)
+//   if (isNaN(money)) {
+//     Swal.fire('Error', 'Invalid amount for Money Given', 'error')
+//     return
+//   }
 
-  const total = parseFloat(editGrandTotal.value.toFixed(2))
+//   const total = parseFloat(editGrandTotal.value.toFixed(2))
 
-  if (money < total) {
-    Swal.fire(
-      'Error',
-      `Money given (₱${money.toFixed(2)}) is less than total (₱${total.toFixed(2)})`,
-      'error'
-    )
-    return
-  }
+//   if (money < total) {
+//     Swal.fire(
+//       'Error',
+//       `Money given (₱${money.toFixed(2)}) is less than total (₱${total.toFixed(2)})`,
+//       'error'
+//     )
+//     return
+//   }
 
-  const change = money - total
+//   const change = money - total
 
-  const confirm = await Swal.fire({
-    title: modalMode.value === 'edit' ? 'Save changes?' : 'Save this sale?',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'Save'
-  })
-  if (!confirm.isConfirmed) return
+//   const confirm = await Swal.fire({
+//     title: modalMode.value === 'edit' ? 'Save changes?' : 'Save this sale?',
+//     icon: 'question',
+//     showCancelButton: true,
+//     confirmButtonText: 'Save'
+//   })
+//   if (!confirm.isConfirmed) return
 
-  const saleData = structuredClone(toRaw(editSale.value))
-  const itemsData = structuredClone(editItems.value.map(i => toRaw(i)))
+//   const saleData = structuredClone(toRaw(editSale.value))
+//   const itemsData = structuredClone(editItems.value.map(i => toRaw(i)))
 
-  try {
-    if (modalMode.value === 'edit') {
-      await store.dispatch('sales/saveEdit', {
-        sale: { 
-          ...saleData,
-          total_amount: editSubTotal.value,
-          final_total: editGrandTotal.value,
-          money_given: money,
-          change: change
-        },
-        items: itemsData
-      })
-      Swal.fire({ icon: 'success', title: 'Sale updated', timer: 1200, showConfirmButton: false })
-    } else {
-      await store.dispatch('sales/saveSale', {
-        cart: itemsData.map(i => ({ ...i })),
-        customer_id: editSale.value.customer_id,
-        subTotal: editSubTotal.value,
-        professionalFee: Number(editSale.value.professional_fee || 0),
-        discount: Number(editSale.value.discount || 0),
-        finalTotal: editGrandTotal.value,
-        purchased_date: editSale.value.purchased_date || null,
-        money_given: money,
-        change: change
-      })
-      Swal.fire({ icon: 'success', title: 'Sale added', timer: 1200, showConfirmButton: false })
-    }
+//   try {
+//     if (modalMode.value === 'edit') {
+//       await store.dispatch('sales/saveEdit', {
+//         sale: { 
+//           ...saleData,
+//           total_amount: editSubTotal.value,
+//           final_total: editGrandTotal.value,
+//           money_given: money,
+//           change: change
+//         },
+//         items: itemsData
+//       })
+//       Swal.fire({ icon: 'success', title: 'Sale updated', timer: 1200, showConfirmButton: false })
+//     } else {
+//       await store.dispatch('sales/saveSale', {
+//         cart: itemsData.map(i => ({ ...i })),
+//         customer_id: editSale.value.customer_id,
+//         subTotal: editSubTotal.value,
+//         professionalFee: Number(editSale.value.professional_fee || 0),
+//         discount: Number(editSale.value.discount || 0),
+//         finalTotal: editGrandTotal.value,
+//         purchased_date: editSale.value.purchased_date || null,
+//         money_given: money,
+//         change: change
+//       })
+//       Swal.fire({ icon: 'success', title: 'Sale added', timer: 1200, showConfirmButton: false })
+//     }
 
-    showEdit.value = false
-    store.dispatch('sales/loadSales')
-  } catch (err) {
-    console.error(err)
-    Swal.fire('Error', err.message || 'Failed to save sale', 'error')
-  }
-}
+//     showEdit.value = false
+//     store.dispatch('sales/loadSales')
+//   } catch (err) {
+//     console.error(err)
+//     Swal.fire('Error', err.message || 'Failed to save sale', 'error')
+//   }
+// }
 
 
 /* ======================
@@ -351,6 +361,10 @@ const goPage = (page) => { if (page < 1 || page > totalPages.value) return; curr
 const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
 
 watch([searchKeyword, startDate, endDate, itemsPerPage], () => { currentPage.value = 1 })
+
+const goToHome = () => {
+  router.push({ name: 'Home' })
+}
 </script>
 
 <template>
@@ -367,7 +381,7 @@ watch([searchKeyword, startDate, endDate, itemsPerPage], () => { currentPage.val
         <option v-for="o in itemsPerPageOptions" :key="o" :value="o">{{ o }}</option>
       </select>
 
-      <button @click="openAddSale">Add Sale</button>
+      <button @click="goToHome">Add Sale</button>
     </div>
 
     <!-- TABLE -->
@@ -388,14 +402,14 @@ watch([searchKeyword, startDate, endDate, itemsPerPage], () => { currentPage.val
         <tr v-for="sale in paginatedSales" :key="sale.id">
           <td>#{{ sale.id }}</td>
           <td>{{ new Date(sale.purchased_date).toLocaleString() }}</td>
-          <td>₱{{ sale.total_amount.toFixed(2) }}</td>
-          <td>₱{{ sale.discount.toFixed(2) }}</td>
-          <td>₱{{ sale.professional_fee.toFixed(2) }}</td>
-          <td><strong>₱{{ sale.final_total.toFixed(2) }}</strong></td>
+          <td>₱{{ fmt(sale.total_amount) }}</td>
+          <td>₱{{ fmt(sale.discount) }}</td>
+          <td>₱{{ fmt(sale.professional_fee) }}</td>
+          <td><strong>₱{{ fmt(sale.final_total) }}</strong></td>
           <td :class="sale.status === 'voided' ? 'status-voided' : 'status-ok'">{{ sale.status }}</td>
           <td>
             <button @click="viewSale(sale)">View</button>
-            <button v-if="sale.status === 'completed'" @click="openEdit(sale)">Edit</button>
+            <!-- <button v-if="sale.status === 'completed'" @click="openEdit(sale)">Edit</button> -->
             <button v-if="sale.status === 'completed'" class="danger" @click="voidSale(sale)">Void</button>
           </td>
         </tr>

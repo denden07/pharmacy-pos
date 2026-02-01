@@ -31,7 +31,8 @@ import Sidebar from '../src/components/Sidebar.vue'
   /* margin-left: 220px; */
   padding: 16px;
    /* min-height: 100vh; */
-  width:100%
+  width:100%;
+  height: 100%;
 }
 
 /* Sidebar collapsed */

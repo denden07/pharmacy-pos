@@ -10,7 +10,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'saved'])
 const store = useStore()
 
 /* =====================
@@ -128,6 +128,7 @@ const submitForm = async () => {
     })
   }
 
+  emit('saved')
   emit('close')
 }
 </script>
@@ -143,10 +144,10 @@ const submitForm = async () => {
       <label>Generic Name</label>
       <input v-model="genericName" type="text" />
 
-      <label>Price 1</label>
+      <label>Regular Price</label>
       <input v-model.number="price1" type="number" min="0" />
 
-      <label>Price 2</label>
+      <label>Discounted Price</label>
       <input v-model.number="price2" type="number" min="0" />
 
       <hr />

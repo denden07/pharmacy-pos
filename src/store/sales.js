@@ -7,6 +7,7 @@ export default {
     sales: [],
     lastSaleId: null
   }),
+
   mutations: {
     SET_SALES(state, sales) {
       state.sales = sales
@@ -30,7 +31,11 @@ export default {
         customer_id,
         moneyGiven,
         change,
-        purchased_date
+        purchased_date,
+
+        // 🔹 NEW
+        pointsUsed = 0,
+        pointsDiscount = 0
       } = payload
 
       if (!cart.length) throw new Error('Cart is empty')
@@ -40,6 +45,7 @@ export default {
         ['sales', 'sale_items', 'inventory_batches', 'points_history', 'yearly_points'],
         'readwrite'
       )
+
       const salesStore = tx.objectStore('sales')
       const itemsStore = tx.objectStore('sale_items')
       const batchesStore = tx.objectStore('inventory_batches')
@@ -48,7 +54,6 @@ export default {
 
       const now = new Date()
 
-      // 1️⃣ Save sales header
       const saleId = await salesStore.add({
         purchased_date: purchased_date ? new Date(purchased_date) : now,
         created_at: now,
@@ -58,18 +63,18 @@ export default {
         discount,
         final_total: finalTotal,
         money_given: moneyGiven,
-        change: change,
-        status: 'completed'
+        change,
+        status: 'completed',
+
+        // 🔹 NEW
+        points_used: pointsUsed,
+        points_discount: pointsDiscount
       })
 
-      // 2️⃣ Save each sale item
       for (const item of cart) {
         const allBatches = await batchesStore.index('medicine_id').getAll(item.id)
         const availableBatch = allBatches.find(b => b.quantity >= item.qty)
-
-        if (!availableBatch) {
-          throw new Error(`Not enough stock for ${item.name}`)
-        }
+        if (!availableBatch) throw new Error(`Not enough stock for ${item.name}`)
 
         availableBatch.quantity -= item.qty
         await batchesStore.put(availableBatch)
@@ -85,9 +90,29 @@ export default {
         })
       }
 
-      // 3️⃣ Save points (allow decimals)
       if (customer_id) {
+        const year = now.getFullYear()
+        const yearlyKey = [customer_id, year]
+        const yearly = (await yearlyStore.get(yearlyKey)) || { customer_id, year, points: 0 }
+
+        // 🔹 Redeem
+        if (pointsUsed > 0) {
+          yearly.points -= pointsUsed
+          if (yearly.points < 0) yearly.points = 0
+
+          await pointsStore.add({
+            customer_id,
+            date: now,
+            type: 'redeem',
+            related_sale_id: saleId,
+            points: -pointsUsed,
+            description: `Redeemed ${pointsUsed} points for ₱${pointsDiscount}`
+          })
+        }
+
+        // 🔹 Earn
         const pointsEarned = finalTotal / 200
+        yearly.points += pointsEarned
 
         await pointsStore.add({
           customer_id,
@@ -98,25 +123,10 @@ export default {
           description: `Earned ${pointsEarned.toFixed(2)} points from sale #${saleId}`
         })
 
-        // 4️⃣ Update yearly points
-        const year = now.getFullYear()
-        const yearlyKey = [customer_id, year]
-        const existing = await yearlyStore.get(yearlyKey)
-
-        if (existing) {
-          existing.points += pointsEarned
-          await yearlyStore.put(existing)
-        } else {
-          await yearlyStore.add({
-            customer_id,
-            year,
-            points: pointsEarned
-          })
-        }
+        await yearlyStore.put(yearly)
       }
 
       await tx.done
-
       commit('SET_LAST_SALE_ID', saleId)
       return saleId
     },
@@ -170,6 +180,7 @@ export default {
         ['sales', 'sale_items', 'inventory_batches', 'points_history', 'yearly_points'],
         'readwrite'
       )
+
       const salesStore = tx.objectStore('sales')
       const itemsStore = tx.objectStore('sale_items')
       const batchStore = tx.objectStore('inventory_batches')
@@ -178,7 +189,6 @@ export default {
 
       const now = new Date()
 
-      // 1️⃣ Restore old inventory
       const oldItems = await itemsStore.index('sale_id').getAll(sale.id)
       for (const old of oldItems) {
         if (!old.batch_id) continue
@@ -190,7 +200,6 @@ export default {
         await itemsStore.delete(old.id)
       }
 
-      // 2️⃣ Remove old points
       if (sale.customer_id) {
         const oldPoints = await pointsStore.index('related_sale_id').getAll(sale.id)
         for (const p of oldPoints) {
@@ -206,7 +215,6 @@ export default {
         }
       }
 
-      // 3️⃣ Save updated sale
       await salesStore.put({
         ...sale,
         purchased_date: sale.purchased_date ? new Date(sale.purchased_date) : now,
@@ -214,7 +222,6 @@ export default {
         date: new Date(sale.date || now)
       })
 
-      // 4️⃣ Add new items + deduct stock
       for (const item of items) {
         const batches = await batchStore.index('medicine_id').getAll(item.medicine_id)
         const batch = batches.find(b => b.quantity >= item.qty)
@@ -234,7 +241,6 @@ export default {
         })
       }
 
-      // 5️⃣ Save new points
       if (sale.customer_id) {
         const pointsEarned = sale.final_total / 200
         await pointsStore.add({
@@ -265,7 +271,7 @@ export default {
     },
 
     // ======================
-    // VOID SALE
+    // VOID SALE (RESTORE)
     // ======================
     async voidSale({ dispatch }, sale) {
       const result = await Swal.fire({
@@ -280,15 +286,16 @@ export default {
 
       const db = await dbPromise
 
-      // 1️⃣ Restore inventory
-      const itemsTx = db.transaction('sale_items', 'readonly')
-      const itemsStore = itemsTx.objectStore('sale_items')
-      const saleItems = await itemsStore.index('sale_id').getAll(sale.id)
-      await itemsTx.done
+      const items = await db
+        .transaction('sale_items')
+        .objectStore('sale_items')
+        .index('sale_id')
+        .getAll(sale.id)
 
       const invTx = db.transaction('inventory_batches', 'readwrite')
       const batchStore = invTx.objectStore('inventory_batches')
-      for (const item of saleItems) {
+
+      for (const item of items) {
         if (!item.batch_id) continue
         const batch = await batchStore.get(item.batch_id)
         if (batch) {
@@ -298,11 +305,10 @@ export default {
       }
       await invTx.done
 
-      // 2️⃣ Remove points
       if (sale.customer_id) {
-        const pointsTx = db.transaction(['points_history', 'yearly_points'], 'readwrite')
-        const pointsStore = pointsTx.objectStore('points_history')
-        const yearlyStore = pointsTx.objectStore('yearly_points')
+        const tx = db.transaction(['points_history', 'yearly_points'], 'readwrite')
+        const pointsStore = tx.objectStore('points_history')
+        const yearlyStore = tx.objectStore('yearly_points')
 
         const points = await pointsStore.index('related_sale_id').getAll(sale.id)
         for (const p of points) {
@@ -316,26 +322,16 @@ export default {
           }
           await pointsStore.delete(p.id)
         }
-
-        await pointsTx.done
+        await tx.done
       }
 
-      // 3️⃣ Mark sale as voided
       const salesTx = db.transaction('sales', 'readwrite')
-      const salesStore = salesTx.objectStore('sales')
-      const existingSale = await salesStore.get(sale.id)
-      if (existingSale) {
-        existingSale.status = 'voided'
-        await salesStore.put(existingSale)
+      const s = await salesTx.objectStore('sales').get(sale.id)
+      if (s) {
+        s.status = 'voided'
+        await salesTx.objectStore('sales').put(s)
       }
       await salesTx.done
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Sale Voided & Inventory Restored',
-        timer: 1300,
-        showConfirmButton: false
-      })
 
       await dispatch('loadSales')
     },
@@ -345,9 +341,7 @@ export default {
       const medsStore = db.transaction('medicines').objectStore('medicines')
       const allMeds = await medsStore.getAll()
       const map = {}
-      allMeds.forEach(med => {
-        map[med.id] = med
-      })
+      allMeds.forEach(med => (map[med.id] = med))
       return map
     }
   }

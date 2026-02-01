@@ -4,6 +4,8 @@ import { useStore } from 'vuex'
 import MedicineForm from '../components/MedicineForm.vue'
 import MedicineViewModal from '../components/MedicineViewModal.vue'
 import { dbPromise } from '../db'
+import Swal from 'sweetalert2'
+
 
 const store = useStore()
 
@@ -63,11 +65,22 @@ const viewMedicine = (medicine) => {
   showView.value = true
 }
 
-const closeForm = async () => {
+const closeForm = async (saved = false) => {
   showForm.value = false
   editingMedicine.value = null
   await loadMedicines()
+
+  if (saved) {
+    Swal.fire({
+      icon: 'success',
+      title: 'Saved!',
+      text: 'Medicine has been saved successfully.',
+      timer: 1400,
+      showConfirmButton: false
+    })
+  }
 }
+
 
 // --- Computed for search & pagination ---
 const medicines = computed(() => store.state.medicines.medicines)
@@ -162,7 +175,9 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
       v-if="showForm"
       :medicineToEdit="editingMedicine"
       @close="closeForm"
+      @saved="closeForm(true)"
     />
+
 
     <MedicineViewModal
       v-if="showView"
