@@ -6,39 +6,37 @@ import MedicineViewModal from '../components/MedicineViewModal.vue'
 import { dbPromise } from '../db'
 import Swal from 'sweetalert2'
 
-
 const store = useStore()
 
-// Form modal
+// Modals
 const showForm = ref(false)
 const editingMedicine = ref(null)
-
-// View modal
 const showView = ref(false)
 const selectedMedicine = ref(null)
 
-// Search
+// Search & filter
 const searchKeyword = ref('')
+const filterMode = ref('active') // active | archived | all
 
 // Pagination
 const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const itemsPerPageOptions = [5, 10, 20, 50]
 
-// Stock map
+// Stock
 const stockMap = ref({})
 
-// Load medicines & stock
+// Load stock
 const loadStock = async () => {
   const db = await dbPromise
   const batches = await db.getAll('inventory_batches')
   const map = {}
-  batches.forEach(batch => {
-    const medId = batch.medicine_id
-    const qty = batch.quantity || 0
-    if (!map[medId]) map[medId] = 0
-    map[medId] += qty
+
+  batches.forEach(b => {
+    if (!map[b.medicine_id]) map[b.medicine_id] = 0
+    map[b.medicine_id] += b.quantity || 0
   })
+
   stockMap.value = map
 }
 
@@ -74,39 +72,113 @@ const closeForm = async (saved = false) => {
     Swal.fire({
       icon: 'success',
       title: 'Saved!',
-      text: 'Medicine has been saved successfully.',
-      timer: 1400,
+      timer: 1200,
       showConfirmButton: false
     })
   }
 }
 
-
-// --- Computed for search & pagination ---
+// Data
 const medicines = computed(() => store.state.medicines.medicines)
 
+// Filter logic
 const filteredMedicines = computed(() => {
-  if (!searchKeyword.value.trim()) return medicines.value
-  return medicines.value.filter(
-    m =>
-      m.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-      (m.generic_name || '').toLowerCase().includes(searchKeyword.value.toLowerCase())
+  let list = medicines.value
+
+  if (filterMode.value === 'active') {
+    list = list.filter(m => !m.is_archived)
+  } else if (filterMode.value === 'archived') {
+    list = list.filter(m => m.is_archived)
+  }
+
+  if (!searchKeyword.value.trim()) return list
+
+  return list.filter(m =>
+    m.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
+    (m.generic_name || '').toLowerCase().includes(searchKeyword.value.toLowerCase())
   )
 })
 
-const totalPages = computed(() => Math.ceil(filteredMedicines.value.length / itemsPerPage.value))
+// Pagination
+const totalPages = computed(() =>
+  Math.ceil(filteredMedicines.value.length / itemsPerPage.value)
+)
 
 const paginatedMedicines = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage.value
   return filteredMedicines.value.slice(start, start + itemsPerPage.value)
 })
 
-const goPage = (page) => {
-  if (page < 1 || page > totalPages.value) return
-  currentPage.value = page
+const goPage = (p) => {
+  if (p < 1 || p > totalPages.value) return
+  currentPage.value = p
 }
 
-const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
+const pageNumbers = computed(() =>
+  Array.from({ length: totalPages.value }, (_, i) => i + 1)
+)
+
+// Archive
+const archiveMedicine = async (medicine) => {
+  const result = await Swal.fire({
+    title: 'Archive this medicine?',
+    text: 'It will be hidden but not deleted.',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, archive'
+  })
+
+  if (!result.isConfirmed) return
+
+  const db = await dbPromise
+  const tx = db.transaction('medicines', 'readwrite')
+  const storeMed = tx.objectStore('medicines')
+
+  await storeMed.put({ ...medicine, is_archived: true })
+  await tx.done
+
+  await loadMedicines()
+
+  Swal.fire({
+    icon: 'success',
+    title: 'Archived',
+    timer: 1000,
+    showConfirmButton: false
+  })
+}
+
+const restoreMedicine = async (medicine) => {
+  const result = await Swal.fire({
+    title: 'Restore this medicine?',
+    text: 'It will become active again.',
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, restore'
+  })
+
+  if (!result.isConfirmed) return
+
+  const db = await dbPromise
+  const tx = db.transaction('medicines', 'readwrite')
+  const storeMed = tx.objectStore('medicines')
+
+  await storeMed.put({
+    ...medicine,
+    is_archived: false,
+    updated_at: new Date()
+  })
+
+  await tx.done
+  await loadMedicines()
+
+  Swal.fire({
+    icon: 'success',
+    title: 'Restored',
+    timer: 1000,
+    showConfirmButton: false
+  })
+}
+
 </script>
 
 <template>
@@ -114,12 +186,23 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
     <h1>Medicines</h1>
 
     <div class="top-bar">
-      <input type="text" v-model="searchKeyword" placeholder="Search medicine..." />
+      <input
+        type="text"
+        v-model="searchKeyword"
+        placeholder="Search medicine..."
+      />
+
+      <!-- FILTER -->
+      <select v-model="filterMode">
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+        <option value="all">All</option>
+      </select>
 
       <button @click="addMedicine">Add Medicine</button>
 
       <div class="items-per-page">
-        <label>Items per page:</label>
+        <label>Items:</label>
         <select v-model.number="itemsPerPage">
           <option v-for="opt in itemsPerPageOptions" :key="opt" :value="opt">
             {{ opt }}
@@ -131,14 +214,15 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
     <table>
       <thead>
         <tr>
-          <th>Brand Name</th>
-          <th>Generic Name</th>
+          <th>Brand</th>
+          <th>Generic</th>
           <th>Price 1</th>
           <th>Price 2</th>
           <th>Stock</th>
           <th>Actions</th>
         </tr>
       </thead>
+
       <tbody>
         <tr v-for="med in paginatedMedicines" :key="med.id">
           <td>{{ med.name }}</td>
@@ -149,25 +233,46 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
           <td class="actions-td">
             <button @click="editMedicine(med)">Edit</button>
             <button @click="viewMedicine(med)">View</button>
+
+            <button
+              v-if="!med.is_archived"
+              class="danger"
+              @click="archiveMedicine(med)"
+            >
+              Archive
+            </button>
+
+            <button
+              v-else
+              class="restore"
+              @click="restoreMedicine(med)"
+            >
+              Restore
+            </button>
           </td>
+
         </tr>
       </tbody>
     </table>
 
     <!-- Pagination -->
     <div class="pagination" v-if="totalPages > 1">
-      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">Prev</button>
-
-      <button
-        v-for="num in pageNumbers"
-        :key="num"
-        @click="goPage(num)"
-        :class="{ active: currentPage === num }"
-      >
-        {{ num }}
+      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">
+        Prev
       </button>
 
-      <button @click="goPage(currentPage + 1)" :disabled="currentPage === totalPages">Next</button>
+      <button
+        v-for="n in pageNumbers"
+        :key="n"
+        @click="goPage(n)"
+        :class="{ active: currentPage === n }"
+      >
+        {{ n }}
+      </button>
+
+      <button @click="goPage(currentPage + 1)" :disabled="currentPage === totalPages">
+        Next
+      </button>
     </div>
 
     <!-- Modals -->
@@ -178,7 +283,6 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
       @saved="closeForm(true)"
     />
 
-
     <MedicineViewModal
       v-if="showView"
       :medicine="selectedMedicine"
@@ -187,6 +291,7 @@ const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, 
     />
   </div>
 </template>
+
 
 <style scoped>
 .medicines-page {
@@ -369,5 +474,32 @@ body.dark-mode .pagination button.active {
     gap: 4px !important;
   }
 }
+
+.actions-td .danger {
+  background-color: #e74c3c !important;
+}
+body.dark-mode .actions-td .danger {
+  background-color: #c0392b !important;
+}
+
+.actions-td .danger {
+  background-color: #e74c3c !important;
+}
+body.dark-mode .actions-td .danger {
+  background-color: #c0392b !important;
+}
+
+
+.actions-td .default {
+  background-color: #3498db !important;
+}
+body.dark-mode .actions-td .default {
+  background-color: #3498db !important;
+}
+
+.actions-td .restore {
+  background-color: #3498db !important;
+}
+
 
 </style>

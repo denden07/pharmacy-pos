@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <Sidebar />
+    <Sidebar @toggle="onSidebarToggle" />
     <main class="main-content">
       <router-view />
     </main>
@@ -8,43 +8,38 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import Sidebar from '../src/components/Sidebar.vue'
+
+const sidebarWidth = ref(220)
+
+const onSidebarToggle = (isOpen) => {
+  sidebarWidth.value = isOpen ? 260 : 100
+  document.documentElement.style.setProperty(
+    '--sidebar-width',
+    sidebarWidth.value + 'px'
+  )
+}
 </script>
 
+<style>
+:root {
+  --sidebar-width: 260px;
+}
+</style>
 
 <style scoped>
 .app-container {
-  display: flex;
-  height: 100vh;
   width: 100%;
 }
 
-
-/* If sidebar is closed on small screens, main content takes full width */
-@media (max-width: 768px) {
-  .main-content {
-    margin-left: 0;
-  }
-}
-
+/* THIS is the key fix */
 .main-content {
-  /* margin-left: 220px; */
+  margin-left: var(--sidebar-width);
+  width: calc(100% - var(--sidebar-width));
+  min-height: 100vh;
   padding: 16px;
-   /* min-height: 100vh; */
-  width:100%;
-  height: 100%;
-}
-
-/* Sidebar collapsed */
-body.sidebar-collapsed .main-content {
-  margin-left: 60px;
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .main-content {
-    margin-left: 0 !important;
-    padding: 12px;
-  }
+  transition: margin-left 0.25s ease, width 0.25s ease;
+  box-sizing: border-box;
 }
 </style>

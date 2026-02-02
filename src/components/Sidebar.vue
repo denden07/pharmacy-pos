@@ -16,9 +16,18 @@ if (isDarkMode.value) {
   document.body.classList.add('dark-mode')
 }
 
+const emit = defineEmits(['toggle'])
+
+
 // Toggle sidebar
 const toggleSidebar = () => {
   isOpen.value = !isOpen.value
+  document.documentElement.style.setProperty(
+    '--sidebar-width',
+    isOpen.value ? '220px' : '60px'
+  )
+
+  emit('toggle', isOpen.value)
 }
 
 // Toggle dark mode
@@ -76,6 +85,7 @@ const isActive = (path) => route.path === path
 <style scoped>
 /* SIDEBAR */
 .sidebar {
+  position: fixed;  
   width: 220px;
   min-width: 220px;
   height: 100vh;
@@ -93,6 +103,7 @@ const isActive = (path) => route.path === path
   min-width: 60px;
 }
 
+
 /* HAMBURGER */
 .hamburger {
   background: #1abc9c;
@@ -103,6 +114,13 @@ const isActive = (path) => route.path === path
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 12px;
+}
+
+
+.sidebar.collapsed button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /* NIGHT MODE */

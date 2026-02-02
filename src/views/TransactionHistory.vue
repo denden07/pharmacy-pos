@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStore } from 'vuex'
+import { dbPromise } from '../db'
 
 const route = useRoute()
 const store = useStore()
@@ -113,10 +114,35 @@ function goBack() {
 /* ======================
    MODAL
 ====================== */
-const openSaleModal = (sale) => {
+const selectedSaleItems = ref([]) // for medicines in modal
+
+const openSaleModal = async (sale) => {
+  if (!sale) return
+
+  const db = await dbPromise
+
+  // single transaction for items and medicines
+  const tx = db.transaction(['sale_items', 'medicines'], 'readonly')
+  const itemsStore = tx.objectStore('sale_items')
+  const medsStore = tx.objectStore('medicines')
+
+  const items = await itemsStore.index('sale_id').getAll(sale.id)
+
+  for (const item of items) {
+    const med = await medsStore.get(item.medicine_id)
+    item.medicine_name = med?.name || 'Unknown'
+    item.generic_name = med?.generic_name || ''
+  }
+
+  await tx.done
+
   selectedSale.value = sale
+  selectedSaleItems.value = items
   showSaleModal.value = true
 }
+
+
+
 
 const closeSaleModal = () => {
   showSaleModal.value = false
@@ -205,6 +231,7 @@ const closeSaleModal = () => {
           <th>Date</th>
           <th>Sale #</th>
           <th>Total</th>
+          <th>Status</th>
         </tr>
       </thead>
       <tbody>
@@ -217,6 +244,16 @@ const closeSaleModal = () => {
           <td>{{ new Date(s.created_at).toLocaleString() }}</td>
           <td>#{{ s.id }}</td>
           <td>₱{{ (s.final_total || 0).toFixed(2) }}</td>
+          <td>
+            <span
+              :class="{
+                'status-success': s.status === 'completed',
+                'status-voided': s.status === 'voided'
+              }"
+            >
+              {{ s.status }}
+            </span>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -247,11 +284,41 @@ const closeSaleModal = () => {
       <div class="modal">
         <h2>Sale #{{ selectedSale.id }}</h2>
         <p>Date: {{ new Date(selectedSale.created_at).toLocaleString() }}</p>
-        <p>Total: ₱{{ (selectedSale.final_total || 0).toFixed(2) }}</p>
+        <p>Status: {{ selectedSale.status || 'completed' }}</p>
 
-        <button @click="closeSaleModal">Close</button>
+        <hr/>
+        <table>
+          <thead>
+            <tr>
+              <th>Medicine</th>
+              <th>Price</th>
+              <th>Qty</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in selectedSaleItems" :key="item.id">
+              <td>{{ item.medicine_name }} <small v-if="item.generic_name">{{ item.generic_name }}</small></td>
+              <td>₱{{ item.price_at_sale.toFixed(2) }}</td>
+              <td>{{ item.quantity }}</td>
+              <td>₱{{ (item.price_at_sale * item.quantity).toFixed(2) }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <hr/>
+        <p>Subtotal: ₱{{ selectedSale.total_amount.toFixed(2) }}</p>
+        <p>Professional Fee: ₱{{ selectedSale.professional_fee.toFixed(2) }}</p>
+        <p>Discount (Points): -₱{{ selectedSale.points_discount?.toFixed(2) || 0 }}</p>
+        <p><strong>Final Total: ₱{{ selectedSale.final_total.toFixed(2) }}</strong></p>
+        <p>Money Given: ₱{{ selectedSale.money_given.toFixed(2) }}</p>
+        <p>Change: ₱{{ selectedSale.change.toFixed(2) }}</p>
+
+        <button @click="showSaleModal = false">Close</button>
       </div>
     </div>
+
+
   </div>
 </template>
 
@@ -486,6 +553,19 @@ body.dark-mode .modal {
 
 body.dark-mode .back-btn {
   background: #2980b9;
+}
+
+/* ======================
+   SALE STATUS COLORS
+====================== */
+.status-success {
+  color: #1abc9c;
+  font-weight: 600;
+}
+
+.status-voided {
+  color: #e74c3c;
+  font-weight: 600;
 }
 
 

@@ -201,7 +201,6 @@ const checkout = async () => {
     return
   }
 
-
   const result = await Swal.fire({
     title:'Confirm Sale',
     html: `
@@ -233,7 +232,9 @@ const checkout = async () => {
       finalTotal: grandTotal.value,
       moneyGiven: moneyGiven.value || 0,
       change: change.value,
-      pointsUsed: pointsUsed.value
+      pointsUsed: pointsConfirmed.value ? customerPoints.value : 0,
+      pointsMultiplier: pointsConfirmed.value ? redeemMultiplier.value : 1,
+      pointsDiscount: pointsDiscount.value
     })
 
     await Swal.fire({
@@ -258,6 +259,7 @@ const checkout = async () => {
     Swal.fire({ icon:'error', title:'Save failed', text:'Something went wrong while saving the sale.' })
   }
 }
+
 
 
 // ======================
@@ -378,7 +380,7 @@ const getPrice = (medId, type) => {
       <table v-if="cart.length">
         <thead>
           <tr>
-            <th width="20%">Medicine</th>
+            <th width="25%">Medicine</th>
             <th>Price</th>
             <th>Qty</th>
             <th>Total</th>
@@ -397,14 +399,14 @@ const getPrice = (medId, type) => {
                   :class="{ active: item.priceType === 'regular', inactive: item.priceType !== 'regular' }"
                   @click="setPriceType(item, 'regular')"
                 >
-                  Regular ₱{{ getPrice(item.id, 'regular') }}
+                  Reg ₱{{ getPrice(item.id, 'regular') }}
                 </button>
 
                 <button
                   :class="{ active: item.priceType === 'discount', inactive: item.priceType !== 'discount' }"
                   @click="setPriceType(item, 'discount')"
                 >
-                  Discount ₱{{ getPrice(item.id, 'discount') }}
+                  Dis ₱{{ getPrice(item.id, 'discount') }}
                 </button>
               </div>
             </td>
@@ -412,6 +414,7 @@ const getPrice = (medId, type) => {
               <div class="qty-wrapper">
                 <button @click="item.qty = Math.max(1,item.qty-1)">-</button>
                 <input
+                  style="font-weight: bold"
                   type="number"
                   :value="item.qty"
                   readonly
@@ -619,8 +622,7 @@ const getPrice = (medId, type) => {
 .pos-layout {
   display: flex;
   gap: 14px;
-  min-height: 400px;
-  min-height: calc(100vh - 120px); 
+  min-height: 500px;
 }
 
 /* =========================
@@ -677,6 +679,7 @@ th, td {
   background: #f9f9f9;
   font-size: 18px;
   text-align: center;
+  margin-top: auto
 }
 
 .cart-totals div {
@@ -777,8 +780,8 @@ th, td {
   align-items: center;
 }
 .qty-wrapper input {
-  width: 46px;
-  height: 32px;
+  width: 50px;
+  height: 36px;
   text-align: center;
   border-radius: 6px;
   border: 1px solid #ccc;
@@ -793,6 +796,9 @@ th, td {
   background: #3498db;
   color: #fff;
   font-size: 13px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 /* =========================

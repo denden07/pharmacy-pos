@@ -33,23 +33,35 @@ export default {
   },
 
   actions: {
+    // LOAD
     async loadMedicines({ commit }) {
       const db = await dbPromise
       const medicines = await db.getAll('medicines')
-      console.log('Loaded medicines from IndexedDB:', medicines) 
-      commit('SET_MEDICINES', medicines)
+
+      // normalize old data
+      const normalized = medicines.map(m => ({
+        is_archived: false,
+        ...m
+      }))
+
+      commit('SET_MEDICINES', normalized)
     },
 
+    // ADD
     async addMedicine({ commit }, medicine) {
       const db = await dbPromise
-      const id = await db.add('medicines', {
+
+      const data = {
         ...medicine,
+        is_archived: false,
         created_at: new Date(),
         updated_at: new Date()
-      })
-      commit('ADD_MEDICINE', { id, ...medicine })
+      }
 
-      // Record initial price in price_history
+      const id = await db.add('medicines', data)
+      commit('ADD_MEDICINE', { id, ...data })
+
+      // record initial price
       await db.add('price_history', {
         medicine_id: id,
         price1: medicine.price1,
@@ -60,24 +72,24 @@ export default {
       return id
     },
 
+    // UPDATE
     async updateMedicine({ commit }, medicine) {
       const db = await dbPromise
 
-      // Get the current record from DB
       const current = await db.get('medicines', medicine.id)
 
-      // Check if price changed
       const priceChanged =
-        current.price1 !== medicine.price1 || current.price2 !== medicine.price2
+        current.price1 !== medicine.price1 ||
+        current.price2 !== medicine.price2
 
-      // Update medicine
-      await db.put('medicines', {
+      const updated = {
         ...medicine,
         updated_at: new Date()
-      })
-      commit('UPDATE_MEDICINE', medicine)
+      }
 
-      // Record price change if any
+      await db.put('medicines', updated)
+      commit('UPDATE_MEDICINE', updated)
+
       if (priceChanged) {
         await db.add('price_history', {
           medicine_id: medicine.id,
@@ -86,7 +98,28 @@ export default {
           changed_at: new Date()
         })
       }
-    }
+    },
 
+    // ARCHIVE
+    async archiveMedicine({ dispatch }, medicine) {
+      const db = await dbPromise
+      await db.put('medicines', {
+        ...medicine,
+        is_archived: true,
+        updated_at: new Date()
+      })
+      await dispatch('loadMedicines')
+    },
+
+    // RESTORE
+    async restoreMedicine({ dispatch }, medicine) {
+      const db = await dbPromise
+      await db.put('medicines', {
+        ...medicine,
+        is_archived: false,
+        updated_at: new Date()
+      })
+      await dispatch('loadMedicines')
+    }
   }
 }

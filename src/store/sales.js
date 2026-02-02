@@ -33,8 +33,9 @@ export default {
         change,
         purchased_date,
 
-        // 🔹 NEW
+        // Points
         pointsUsed = 0,
+        pointsMultiplier = 1,
         pointsDiscount = 0
       } = payload
 
@@ -54,6 +55,7 @@ export default {
 
       const now = new Date()
 
+      // Save sale
       const saleId = await salesStore.add({
         purchased_date: purchased_date ? new Date(purchased_date) : now,
         created_at: now,
@@ -65,12 +67,12 @@ export default {
         money_given: moneyGiven,
         change,
         status: 'completed',
-
-        // 🔹 NEW
         points_used: pointsUsed,
+        points_multiplier: pointsMultiplier,
         points_discount: pointsDiscount
       })
 
+      // Deduct inventory
       for (const item of cart) {
         const allBatches = await batchesStore.index('medicine_id').getAll(item.id)
         const availableBatch = allBatches.find(b => b.quantity >= item.qty)
@@ -90,27 +92,31 @@ export default {
         })
       }
 
+      // Handle points
       if (customer_id) {
         const year = now.getFullYear()
         const yearlyKey = [customer_id, year]
-        const yearly = (await yearlyStore.get(yearlyKey)) || { customer_id, year, points: 0 }
 
-        // 🔹 Redeem
+        let yearly = await yearlyStore.get(yearlyKey)
+        if (!yearly) yearly = { customer_id, year, points: 0 }
+
+        // Redeem points
         if (pointsUsed > 0) {
-          yearly.points -= pointsUsed
-          if (yearly.points < 0) yearly.points = 0
+          const actualPointsDeducted = pointsUsed * (pointsMultiplier || 1)
+          const pointsToDeduct = Math.min(yearly.points, actualPointsDeducted)
+          yearly.points -= pointsToDeduct
 
           await pointsStore.add({
             customer_id,
             date: now,
             type: 'redeem',
             related_sale_id: saleId,
-            points: -pointsUsed,
-            description: `Redeemed ${pointsUsed} points for ₱${pointsDiscount}`
+            points: -pointsToDeduct,
+            description: `Redeemed ${pointsUsed} points × ${pointsMultiplier} = ${pointsToDeduct}`
           })
         }
 
-        // 🔹 Earn
+        // Earn points
         const pointsEarned = finalTotal / 200
         yearly.points += pointsEarned
 
@@ -172,111 +178,12 @@ export default {
     },
 
     // ======================
-    // SAVE EDITED SALE
-    // ======================
-    async saveEdit(_, { sale, items }) {
-      const db = await dbPromise
-      const tx = db.transaction(
-        ['sales', 'sale_items', 'inventory_batches', 'points_history', 'yearly_points'],
-        'readwrite'
-      )
-
-      const salesStore = tx.objectStore('sales')
-      const itemsStore = tx.objectStore('sale_items')
-      const batchStore = tx.objectStore('inventory_batches')
-      const pointsStore = tx.objectStore('points_history')
-      const yearlyStore = tx.objectStore('yearly_points')
-
-      const now = new Date()
-
-      const oldItems = await itemsStore.index('sale_id').getAll(sale.id)
-      for (const old of oldItems) {
-        if (!old.batch_id) continue
-        const batch = await batchStore.get(old.batch_id)
-        if (batch) {
-          batch.quantity += Number(old.quantity)
-          await batchStore.put(batch)
-        }
-        await itemsStore.delete(old.id)
-      }
-
-      if (sale.customer_id) {
-        const oldPoints = await pointsStore.index('related_sale_id').getAll(sale.id)
-        for (const p of oldPoints) {
-          const year = new Date(p.date).getFullYear()
-          const yearlyKey = [p.customer_id, year]
-          const yearly = await yearlyStore.get(yearlyKey)
-          if (yearly) {
-            yearly.points -= p.points
-            if (yearly.points < 0) yearly.points = 0
-            await yearlyStore.put(yearly)
-          }
-          await pointsStore.delete(p.id)
-        }
-      }
-
-      await salesStore.put({
-        ...sale,
-        purchased_date: sale.purchased_date ? new Date(sale.purchased_date) : now,
-        created_at: sale.created_at ? new Date(sale.created_at) : now,
-        date: new Date(sale.date || now)
-      })
-
-      for (const item of items) {
-        const batches = await batchStore.index('medicine_id').getAll(item.medicine_id)
-        const batch = batches.find(b => b.quantity >= item.qty)
-        if (!batch) throw new Error(`Not enough stock for ${item.medicine_name}`)
-
-        batch.quantity -= Number(item.qty)
-        await batchStore.put(batch)
-
-        await itemsStore.add({
-          sale_id: sale.id,
-          medicine_id: item.medicine_id,
-          quantity: Number(item.qty),
-          price_at_sale: Number(item.price),
-          price_type: item.price_mode,
-          batch_id: batch.id,
-          is_piece_or_box: 'piece'
-        })
-      }
-
-      if (sale.customer_id) {
-        const pointsEarned = sale.final_total / 200
-        await pointsStore.add({
-          customer_id: sale.customer_id,
-          date: now,
-          type: 'sale',
-          related_sale_id: sale.id,
-          points: pointsEarned,
-          description: `Earned ${pointsEarned.toFixed(2)} points from sale #${sale.id}`
-        })
-
-        const year = now.getFullYear()
-        const yearlyKey = [sale.customer_id, year]
-        const existing = await yearlyStore.get(yearlyKey)
-        if (existing) {
-          existing.points += pointsEarned
-          await yearlyStore.put(existing)
-        } else {
-          await yearlyStore.add({
-            customer_id: sale.customer_id,
-            year,
-            points: pointsEarned
-          })
-        }
-      }
-
-      await tx.done
-    },
-
-    // ======================
-    // VOID SALE (RESTORE)
+    // VOID SALE
     // ======================
     async voidSale({ dispatch }, sale) {
       const result = await Swal.fire({
         title: 'Void Sale?',
-        text: 'This will restore inventory, remove points, and mark the sale as voided.',
+        text: 'This will restore inventory, return redeemed points, and remove earned points from this sale.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#e74c3c',
@@ -286,6 +193,7 @@ export default {
 
       const db = await dbPromise
 
+      // 1️⃣ Restore inventory
       const items = await db
         .transaction('sale_items')
         .objectStore('sale_items')
@@ -305,26 +213,52 @@ export default {
       }
       await invTx.done
 
+      // 2️⃣ Adjust points but do NOT subtract redeemed points
       if (sale.customer_id) {
         const tx = db.transaction(['points_history', 'yearly_points'], 'readwrite')
         const pointsStore = tx.objectStore('points_history')
         const yearlyStore = tx.objectStore('yearly_points')
+        const now = new Date()
 
         const points = await pointsStore.index('related_sale_id').getAll(sale.id)
+
+        const year = new Date().getFullYear()
+        const yearlyKey = [sale.customer_id, year]
+        const yearly = (await yearlyStore.get(yearlyKey)) || { customer_id: sale.customer_id, year, points: 0 }
+
         for (const p of points) {
-          const year = new Date(p.date).getFullYear()
-          const yearlyKey = [p.customer_id, year]
-          const yearly = await yearlyStore.get(yearlyKey)
-          if (yearly) {
+          if (p.type === 'redeem') {
+            // ✅ Flip sign to return points
+            const returnedPoints = -p.points
+            yearly.points += returnedPoints
+            await pointsStore.add({
+              customer_id: p.customer_id,
+              date: now,
+              type: 'Redeem Returned',
+              related_sale_id: sale.id,
+              points: returnedPoints,
+              description: `Returned ${Math.abs(returnedPoints)} points from voided sale #${sale.id}`
+            })
+          } else if (p.type === 'sale') {
+            // Remove earned points
             yearly.points -= p.points
             if (yearly.points < 0) yearly.points = 0
-            await yearlyStore.put(yearly)
+            await pointsStore.add({
+              customer_id: p.customer_id,
+              date: now,
+              type: 'Earned Voided',
+              related_sale_id: sale.id,
+              points: -p.points,
+              description: `Removed ${p.points} earned points from voided sale #${sale.id}`
+            })
           }
-          await pointsStore.delete(p.id)
         }
+
+        await yearlyStore.put(yearly)
         await tx.done
       }
 
+      // 3️⃣ Mark sale as voided
       const salesTx = db.transaction('sales', 'readwrite')
       const s = await salesTx.objectStore('sales').get(sale.id)
       if (s) {
@@ -336,6 +270,10 @@ export default {
       await dispatch('loadSales')
     },
 
+
+    // ======================
+    // GET MEDICINES MAP
+    // ======================
     async getMedicinesMap() {
       const db = await dbPromise
       const medsStore = db.transaction('medicines').objectStore('medicines')
