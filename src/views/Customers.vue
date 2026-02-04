@@ -17,6 +17,9 @@ const perPage = ref(10)
 const modal = ref(null)
 const pointsModal = ref(null)
 
+const sortBy = ref('default') // default | name | points
+const sortOrder = ref('desc') // asc | desc
+
 const form = ref({
   id: null,
   name: '',
@@ -37,13 +40,38 @@ const pointsForm = reactive({
 const customers = computed(() => store.state.customers.customers)
 
 const filtered = computed(() => {
-  if (!search.value) return customers.value
-  const q = search.value.toLowerCase()
-  return customers.value.filter(c =>
-    c.name.toLowerCase().includes(q) ||
-    c.phone?.toLowerCase().includes(q) ||
-    c.email?.toLowerCase().includes(q)
-  )
+  let list = customers.value
+
+  if (search.value) {
+    const q = search.value.toLowerCase()
+    list = list.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.phone?.toLowerCase().includes(q) ||
+      c.email?.toLowerCase().includes(q)
+    )
+  }
+
+  // SORT
+  list = [...list].sort((a, b) => {
+    if (sortBy.value === 'name') {
+      return sortOrder.value === 'asc'
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name)
+    }
+
+    if (sortBy.value === 'points') {
+      return sortOrder.value === 'asc'
+        ? (a.points || 0) - (b.points || 0)
+        : (b.points || 0) - (a.points || 0)
+    }
+
+    // DEFAULT = newest first
+    return sortOrder.value === 'asc'
+      ? new Date(a.created_at) - new Date(b.created_at)
+      : new Date(b.created_at) - new Date(a.created_at)
+  })
+
+  return list
 })
 
 const totalPages = computed(() =>
@@ -63,6 +91,12 @@ const pageNumbers = computed(() =>
    WATCHERS
 ====================== */
 watch([search, perPage], () => (page.value = 1))
+
+watch(sortBy, val => {
+  if (val === 'name') sortOrder.value = 'asc'
+  else if (val === 'points') sortOrder.value = 'desc'
+  else sortOrder.value = 'desc'
+})
 
 /* ======================
    LOAD DATA
@@ -111,6 +145,7 @@ async function save() {
   if (form.value.id) {
     await store.dispatch('customers/editCustomer', form.value)
   } else {
+    console.log('test')
     await store.dispatch('customers/addCustomer', form.value)
   }
 
@@ -196,6 +231,18 @@ function goPage(p) {
           <option :value="10">10</option>
           <option :value="20">20</option>
         </select>
+        <select v-model="sortBy" class="input">
+          <option value="default">Newest</option>
+          <option value="name">Name</option>
+          <option value="points">Points</option>
+        </select>
+
+        <select v-model="sortOrder" class="input">
+          <option value="desc">Desc</option>
+          <option value="asc">Asc</option>
+        </select>
+
+
         <button @click="openAdd">Add Customer</button>
       </div>
     </div>
@@ -216,7 +263,7 @@ function goPage(p) {
             <td>{{ c.name }}</td>
             <td>{{ c.address || '-' }}</td>
             <td class="font-semibold">{{ c.points }}</td>
-            <td class="flex gap-1">
+            <td class="flex gap-1" style="display: flex;gap:8px">
               <button class="btn-sm" @click="openEdit(c)">Edit</button>
               <button class="btn-sm danger" @click="remove(c)">Delete</button>
               <button class="secondary" @click="openPointsModal(c)">Adjust Points</button>

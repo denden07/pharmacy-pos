@@ -5,7 +5,12 @@ export default {
   namespaced: true,
   state: () => ({
     sales: [],
-    lastSaleId: null
+    saleDetails: null,
+    lastSaleId: null,
+    currentPage: 1,
+    itemsPerPage: 10,
+    totalSalesCount: 0,
+    loading: false
   }),
 
   mutations: {
@@ -14,10 +19,56 @@ export default {
     },
     SET_LAST_SALE_ID(state, id) {
       state.lastSaleId = id
+    },
+    SET_CURRENT_PAGE(state, page) {
+      state.currentPage = page
+    },
+    SET_TOTAL_COUNT(state, count) {
+      state.totalSalesCount = count
+    },
+    SET_SALES(state, list) {
+      state.sales = list
+    },
+    SET_LOADING(state, val) {
+      state.loading = val
+    },
+    SET_SALE_DETAILS(state, payload) {
+      state.saleDetails = payload
     }
+
+
   },
 
   actions: {
+    async fetchSaleDetails({ commit }, saleId) {
+      const db = await dbPromise
+
+      const sale = await db.transaction('sales').objectStore('sales').get(saleId)
+
+      let customer = null
+      if (sale.customer_id) {
+        customer = await db
+          .transaction('customers')
+          .objectStore('customers')
+          .get(sale.customer_id)
+      }
+
+      const items = await db
+        .transaction('sale_items')
+        .objectStore('sale_items')
+        .index('sale_id')
+        .getAll(saleId)
+
+      const medsStore = db.transaction('medicines').objectStore('medicines')
+
+      for (const item of items) {
+        const med = await medsStore.get(item.medicine_id)
+        item.medicine_name = med?.name || 'Unknown'
+      }
+
+      commit('SET_SALE_DETAILS', { sale, customer, items })
+    },
+
     // ======================
     // SAVE SALE
     // ======================
@@ -157,6 +208,52 @@ export default {
       commit('SET_SALES', sales)
     },
 
+    async loadSalesPage({ commit, state }, filters = {}) {
+      commit('SET_LOADING', true)
+
+      const { startDate, endDate, keyword } = filters
+
+      const db = await dbPromise
+      const tx = db.transaction('sales')
+      const store = tx.objectStore('sales')
+      const index = store.index('purchased_date') // make sure this exists
+
+      // 1️⃣ Count total sales with filters
+      let range = null
+      if (startDate && endDate) range = IDBKeyRange.bound(new Date(startDate), new Date(endDate + 'T23:59:59'))
+      else if (startDate) range = IDBKeyRange.lowerBound(new Date(startDate))
+      else if (endDate) range = IDBKeyRange.upperBound(new Date(endDate + 'T23:59:59'))
+
+      // For total count with filters, we need to iterate through cursor
+      let totalCount = 0
+      let cursor = await index.openCursor(range, 'prev')
+      while (cursor) {
+        if (!keyword || String(cursor.value.id).includes(keyword)) totalCount++
+        cursor = await cursor.continue()
+      }
+      commit('SET_TOTAL_COUNT', totalCount)
+
+      // 2️⃣ Get paginated data
+      const offset = (state.currentPage - 1) * state.itemsPerPage
+      const sales = []
+      let i = 0
+
+      cursor = await index.openCursor(range, 'prev')
+      while (cursor) {
+        if (!keyword || String(cursor.value.id).includes(keyword)) {
+          if (i >= offset && sales.length < state.itemsPerPage) sales.push(cursor.value)
+          i++
+        }
+        if (sales.length >= state.itemsPerPage) break
+        cursor = await cursor.continue()
+      }
+
+      commit('SET_SALES', normalize(sales))
+      commit('SET_LOADING', false)
+    },
+
+
+
     // ======================
     // VIEW SALE ITEMS
     // ======================
@@ -281,6 +378,84 @@ export default {
       const map = {}
       allMeds.forEach(med => (map[med.id] = med))
       return map
+    },
+
+    async exportSalesByDateRange(_, { startDate, endDate }) {
+      const db = await dbPromise
+
+      const tx = db.transaction(
+        ['sales', 'sale_items', 'medicines', 'customers'],
+        'readonly'
+      )
+
+      const salesStore = tx.objectStore('sales')
+      const itemsStore = tx.objectStore('sale_items')
+      const medsStore = tx.objectStore('medicines')
+      const custStore = tx.objectStore('customers')
+
+      const start = new Date(startDate)
+      const end = new Date(endDate + 'T23:59:59')
+
+      const rows = []
+      let totalSales = 0
+      let transactionCount = 0
+
+      let cursor = await salesStore.openCursor()
+      while (cursor) {
+        const sale = cursor.value
+        const saleDate = new Date(sale.purchased_date)
+
+        if (saleDate >= start && saleDate <= end) {
+          transactionCount++
+          totalSales += Number(sale.final_total || 0)
+
+          const customer =
+            sale.customer_id
+              ? await custStore.get(sale.customer_id)
+              : null
+
+          const itemsIndex = itemsStore.index('sale_id')
+          let itemCursor = await itemsIndex.openCursor(sale.id)
+
+          const medicineNames = []
+
+          while (itemCursor) {
+            const item = itemCursor.value
+            const med = await medsStore.get(item.medicine_id)
+
+            medicineNames.push(med?.name || item.medicine_name || '')
+
+            itemCursor = await itemCursor.continue()
+          }
+
+          rows.push({
+            sale_id: sale.id,
+            purchased_date: sale.purchased_date,
+            status: sale.status,
+            customer_name: customer ? customer.name : '',
+            medicines: medicineNames.join(', '),
+            subtotal: sale.total_amount,
+            professional_fee: sale.professional_fee,
+            discount: sale.discount,
+            final_total: sale.final_total,
+            money_given: sale.money_given,
+            change: sale.change
+          })
+        }
+
+        cursor = await cursor.continue()
+      }
+
+      return { rows, transactionCount, totalSales }
     }
+
   }
+}
+
+function normalize(list) {
+  return list.map(s => ({
+    ...s,
+    purchased_date: new Date(s.purchased_date),
+    status: s.status || 'completed'
+  }))
 }

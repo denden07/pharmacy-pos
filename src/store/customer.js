@@ -40,6 +40,7 @@ export default {
       ADD CUSTOMER
     ========================== */
     async addCustomer({ commit, dispatch }, payload) {
+      console.log('test')
       const db = await dbPromise
       const now = new Date()
 
@@ -52,6 +53,8 @@ export default {
         updated_at: now,
         points: 0
       })
+
+      console.log(id)
 
       commit('SET_LAST_CUSTOMER_ID', id)
       await dispatch('loadCustomers')

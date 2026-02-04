@@ -826,12 +826,14 @@ th, td {
 }
 
 .mini.danger {
-  background: red
+  background: red;
+  color: #ffff;
 }
 
 
 .mini.regular {
-  background: #2980b9
+  background: #2980b9 !important;
+  color: #ffff !important
 }
 
 

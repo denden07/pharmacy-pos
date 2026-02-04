@@ -3,6 +3,8 @@ import { ref, computed, onMounted, watch, toRaw } from 'vue'
 import Swal from 'sweetalert2'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
+import { downloadCSV } from '../utils/exportCsv'
+
 
 
 const store = useStore()
@@ -16,8 +18,8 @@ const searchKeyword = ref('')
 const startDate = ref('')
 const endDate = ref('')
 
-const currentPage = ref(1)
-const itemsPerPage = ref(10)
+// const currentPage = ref(1)
+// const itemsPerPage = ref(10)
 const itemsPerPageOptions = [5, 10, 20, 50]
 
 /* ======================
@@ -30,8 +32,7 @@ const modalMode = ref('edit') // 'edit' or 'add'
 /* ======================
    SALE DATA
 ====================== */
-const selectedSale = ref(null)
-const saleItems = ref([])
+// const selectedSale = ref(null)
 
 // const editSale = ref(null)
 // const editItems = ref([])
@@ -90,17 +91,23 @@ const clearCustomer = () => {
 /* ======================
    LOAD SALES & CUSTOMERS
 ====================== */
+
+const loadSales = () => {
+  store.dispatch('sales/loadSalesPage', {
+    page: currentPage.value,
+    itemsPerPage: itemsPerPage.value,
+    startDate: startDate.value,
+    endDate: endDate.value,
+    keyword: searchKeyword.value
+  })
+}
+
+
 onMounted(() => {
-  store.dispatch('sales/loadSales')
-  store.dispatch('customers/loadCustomers')
-  store.dispatch('medicines/loadMedicines')
+   loadSales();
 })
 
-const sales = computed(() => store.state.sales.sales || [])
-const customers = computed(() => store.state.customers.customers || [])
-const allMedicines = computed(() => store.state.medicines.medicines || [])
 
-console.log(allMedicines,customers)
 
 const viewSale = async (sale) => {
   saleItems.value = await store.dispatch('sales/viewSale', sale.id)
@@ -332,7 +339,14 @@ const voidSale = async (sale) => {
 
     await store.dispatch('sales/voidSale', sale)
     Swal.fire('Voided', `Sale #${sale.id} has been voided`, 'success')
-    store.dispatch('sales/loadSales')
+    store.dispatch('sales/loadSalesPage', {
+      page: currentPage.value,
+      itemsPerPage: itemsPerPage.value,
+      startDate: startDate.value,
+      endDate: endDate.value,
+      keyword: searchKeyword.value
+    })
+
   } catch (err) {
     console.error(err)
     Swal.fire('Error', 'Failed to void sale: ' + err.message, 'error')
@@ -344,27 +358,114 @@ const voidSale = async (sale) => {
 ====================== */
 const filteredSales = computed(() =>
   sales.value.filter(s => {
+    const saleDate = new Date(s.purchased_date) // convert string -> Date
     const matchesKeyword = !searchKeyword.value || String(s.id).includes(searchKeyword.value)
-    const matchesStart = !startDate.value || s.purchased_date >= new Date(startDate.value)
-    const matchesEnd = !endDate.value || s.purchased_date <= new Date(endDate.value + 'T23:59:59')
+    const matchesStart = !startDate.value || saleDate >= new Date(startDate.value)
+    const matchesEnd = !endDate.value || saleDate <= new Date(endDate.value + 'T23:59:59')
     return matchesKeyword && matchesStart && matchesEnd
   })
 )
 
-const totalPages = computed(() => Math.ceil(filteredSales.value.length / itemsPerPage.value))
-const paginatedSales = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredSales.value.slice(start, start + itemsPerPage.value)
-})
 
-const goPage = (page) => { if (page < 1 || page > totalPages.value) return; currentPage.value = page }
+
+// const totalPages = computed(() => Math.ceil(filteredSales.value.length / itemsPerPage.value))
+// const paginatedSales = computed(() => {
+//   const start = (currentPage.value - 1) * itemsPerPage.value
+//   return filteredSales.value.slice(start, start + itemsPerPage.value)
+// })
+
+// const goPage = (page) => { if (page < 1 || page > totalPages.value) return; currentPage.value = page }
+// const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
+
+// watch([searchKeyword, startDate, endDate, itemsPerPage], () => { currentPage.value = 1 })
+
+
+
+const goPage = (page) => {
+  if (page < 1 || page > totalPages.value) return
+  store.commit('sales/SET_CURRENT_PAGE', page)
+  loadSales()
+}
+
 const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
 
-watch([searchKeyword, startDate, endDate, itemsPerPage], () => { currentPage.value = 1 })
+
+const currentPage = computed({
+  get: () => store.state.sales.currentPage,
+  set: (v) => store.commit('sales/SET_CURRENT_PAGE', v)
+})
+
+const itemsPerPage = computed({
+  get: () => store.state.sales.itemsPerPage,
+  set: (v) => {
+    store.commit('sales/SET_ITEMS_PER_PAGE', v)
+  }
+})
+const totalSalesCount = computed(() => store.state.sales.totalSalesCount)
+const totalPages = computed(() => Math.ceil(totalSalesCount.value / itemsPerPage.value))
+const sales = computed(() => store.state.sales.sales)
+
+console.log(sales)
+
 
 const goToHome = () => {
   router.push({ name: 'Home' })
 }
+
+
+const saleStatusLabel = computed(() => {
+  if (!selectedSale.value) return ''
+  return selectedSale.value.status === 'voided' ? 'VOIDED' : 'COMPLETED'
+})
+
+watch([searchKeyword, startDate, endDate, itemsPerPage], () => {
+  store.commit('sales/SET_CURRENT_PAGE', 1)
+  loadSales()
+})
+
+watch(currentPage, () => loadSales())
+
+
+const saleDetails = computed(() => store.state.sales.saleDetails)
+const saleItems = computed(() => saleDetails.value?.items || [])
+const saleCustomer = computed(() => saleDetails.value?.customer || null)
+const selectedSale = computed(() => saleDetails.value?.sale || {})
+
+
+async function openSaleModal(sale) {
+  await store.dispatch('sales/fetchSaleDetails', sale.id)
+  showView.value = true
+}
+
+function closeModal() {
+  showView.value = false
+  store.commit('sales/SET_SALE_DETAILS', null)
+}
+
+const exportCSV = async () => {
+  if (!startDate.value || !endDate.value) {
+    return Swal.fire('Error', 'Select date range first', 'error')
+  }
+
+  const { rows, transactionCount, totalSales } =
+    await store.dispatch('sales/exportSalesByDateRange', {
+      startDate: startDate.value,
+      endDate: endDate.value
+    })
+
+  downloadCSV(
+    `sales_${startDate.value}_to_${endDate.value}.csv`,
+    rows,
+    [
+      `TOTAL_TRANSACTIONS,${transactionCount}`,
+      `TOTAL_SALES,${totalSales}`
+    ]
+  )
+}
+
+
+
+
 </script>
 
 <template>
@@ -374,15 +475,30 @@ const goToHome = () => {
     <!-- TOP BAR -->
     <div class="top-bar">
       <input v-model="searchKeyword" placeholder="Search sale #..." />
-      <label>From <input type="date" v-model="startDate" /></label>
-      <label>To <input type="date" v-model="endDate" /></label>
+
+      <label>
+        From
+        <input type="date" v-model="startDate" />
+      </label>
+
+      <label>
+        To
+        <input type="date" v-model="endDate" />
+      </label>
 
       <select v-model.number="itemsPerPage">
         <option v-for="o in itemsPerPageOptions" :key="o" :value="o">{{ o }}</option>
       </select>
 
       <button @click="goToHome">Add Sale</button>
+
+      <!-- EXPORT -->
+      <button @click="exportCSV" class="secondary">
+        Export CSV
+      </button>
     </div>
+
+
 
     <!-- TABLE -->
     <table>
@@ -399,7 +515,7 @@ const goToHome = () => {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="sale in paginatedSales" :key="sale.id">
+        <tr v-for="sale in sales" :key="sale.id">
           <td>#{{ sale.id }}</td>
           <td>{{ new Date(sale.purchased_date).toLocaleString() }}</td>
           <td>₱{{ fmt(sale.total_amount) }}</td>
@@ -407,8 +523,8 @@ const goToHome = () => {
           <td>₱{{ fmt(sale.professional_fee) }}</td>
           <td><strong>₱{{ fmt(sale.final_total) }}</strong></td>
           <td :class="sale.status === 'voided' ? 'status-voided' : 'status-ok'">{{ sale.status }}</td>
-          <td>
-            <button @click="viewSale(sale)">View</button>
+          <td style="display: flex;gap:8px">
+            <button @click="openSaleModal(sale)">View</button>
             <!-- <button v-if="sale.status === 'completed'" @click="openEdit(sale)">Edit</button> -->
             <button v-if="sale.status === 'completed'" class="danger" @click="voidSale(sale)">Void</button>
           </td>
@@ -426,7 +542,25 @@ const goToHome = () => {
     <!-- VIEW SALE MODAL -->
     <div v-if="showView" class="modal-backdrop">
       <div class="modal">
-        <h2>Sale #{{ selectedSale.id }}</h2>
+        <div class="sale-header">
+          <div>
+            <h2>Sale #{{ selectedSale.id }}</h2>
+            <div class="sale-meta">
+              {{ new Date(selectedSale.purchased_date).toLocaleString() }}
+            </div>
+            <div class="sale-meta">
+              Customer: {{ saleCustomer ? saleCustomer.name : 'Walk-in' }}
+            </div>
+          </div>
+
+          <span
+            class="badge"
+            :class="selectedSale.status === 'voided' ? 'badge-voided' : 'badge-ok'"
+          >
+            {{ saleStatusLabel }}
+          </span>
+        </div>
+
         <table>
           <thead>
             <tr>
@@ -450,8 +584,14 @@ const goToHome = () => {
           <div>Professional Fee: ₱{{ selectedSale.professional_fee.toFixed(2) }}</div>
           <div>Discount: ₱{{ selectedSale.discount.toFixed(2) }}</div>
           <div><strong>Total: ₱{{ selectedSale.final_total.toFixed(2) }}</strong></div>
+
+          <hr />
+
+          <div>Money Given: ₱{{ (selectedSale.money_given || 0).toFixed(2) }}</div>
+          <div>Change: ₱{{ (selectedSale.change || 0).toFixed(2) }}</div>
         </div>
-        <button @click="showView = false">Close</button>
+
+        <button @click="closeModal">Close</button>
       </div>
     </div>
 
@@ -811,6 +951,45 @@ body.dark-mode .modal input[type="text"] {
 .price-buttons button.disc.active {
   background: #27ae60;
   border-color: #27ae60;
+}
+
+.sale-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sale-meta {
+  font-size: 13px;
+  color: #666;
+}
+
+body.dark-mode .sale-meta {
+  color: #aaa;
+}
+
+.badge {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.badge-ok {
+  background: #1abc9c;
+  color: white;
+}
+
+.badge-voided {
+  background: #e74c3c;
+  color: white;
+}
+
+.sale-summary hr {
+  margin: 8px 0;
+  border: none;
+  border-top: 1px dashed #ccc;
 }
 
 

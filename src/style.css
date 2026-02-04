@@ -124,3 +124,20 @@ html, body {
 .swal2-container {
   z-index: 999999999999999;
 }
+
+/* Chrome, Edge, Safari */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1); /* invert colors to make it visible in dark mode */
+  cursor: pointer;
+}
+
+/* Firefox */
+input[type="date"]::-moz-calendar-picker-indicator {
+  color: #1abc9c; /* any visible color */
+  cursor: pointer;
+}
+
+/* Optional: make sure input text is visible in dark mode */
+body.dark-mode input[type="date"] {
+  color: #eee;
+}

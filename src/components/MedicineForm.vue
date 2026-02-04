@@ -86,6 +86,7 @@ const isValid = computed(() => {
    Submit
 ===================== */
 const submitForm = async () => {
+  console.log('test')
   if (!isValid.value) {
     alert('Please fill all required fields')
     return

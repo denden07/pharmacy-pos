@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 export const DB_NAME = 'pharmacy_pos_db';
-export const DB_VERSION = 8; // 🔼 bump version
+export const DB_VERSION = 10; // 🔼 bump version
 
 export const dbPromise = openDB(DB_NAME, DB_VERSION, {
   upgrade(db, oldVersion, newVersion, transaction) {
@@ -60,12 +60,12 @@ export const dbPromise = openDB(DB_NAME, DB_VERSION, {
       store.createIndex('discount', 'discount');
       store.createIndex('money_given', 'money_given');
       store.createIndex('change', 'change');
-
+      store.createIndex('purchased_date', 'purchased_date')
       // 🔹 NEW
       store.createIndex('points_used', 'points_used');
       store.createIndex('points_discount', 'points_discount');
     } 
-    else if (oldVersion < 8) {
+    else if (oldVersion < 10) {
       const store = transaction.objectStore('sales');
       if (!store.indexNames.contains('professional_fee')) store.createIndex('professional_fee', 'professional_fee');
       if (!store.indexNames.contains('discount')) store.createIndex('discount', 'discount');
@@ -75,6 +75,9 @@ export const dbPromise = openDB(DB_NAME, DB_VERSION, {
       // 🔹 NEW SAFE INDEX ADD
       if (!store.indexNames.contains('points_used')) store.createIndex('points_used', 'points_used');
       if (!store.indexNames.contains('points_discount')) store.createIndex('points_discount', 'points_discount');
+      if (!store.indexNames.contains('purchased_date')) {
+        store.createIndex('purchased_date', 'purchased_date')
+      }
     }
 
     /* =========================
@@ -90,7 +93,7 @@ export const dbPromise = openDB(DB_NAME, DB_VERSION, {
       store.createIndex('price_type', 'price_type');
       store.createIndex('is_piece_or_box', 'is_piece_or_box');
     } 
-    else if (oldVersion < 8) {
+    else if (oldVersion < 10) {
       const store = transaction.objectStore('sale_items');
       if (!store.indexNames.contains('sale_id')) store.createIndex('sale_id', 'sale_id');
       if (!store.indexNames.contains('medicine_id')) store.createIndex('medicine_id', 'medicine_id');
@@ -111,7 +114,7 @@ export const dbPromise = openDB(DB_NAME, DB_VERSION, {
       store.createIndex('type', 'type');
       store.createIndex('related_sale_id', 'related_sale_id');
     } 
-    else if (oldVersion < 8) {
+    else if (oldVersion < 10) {
       const store = transaction.objectStore('points_history');
       if (!store.indexNames.contains('related_sale_id')) {
         store.createIndex('related_sale_id', 'related_sale_id');

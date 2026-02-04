@@ -345,8 +345,6 @@ body.dark-mode .top-bar input {
 
 /* SELECT */
 .top-bar select {
-  appearance: none !important;
-  -webkit-appearance: none !important;
   min-height: 40px !important;
   padding: 8px 12px !important;
   border-radius: 8px !important;
