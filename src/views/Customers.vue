@@ -1,24 +1,23 @@
 <script setup>
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { useStore } from 'vuex'
-import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
+import { useRouter } from 'vue-router'
 
 const store = useStore()
-const router = useRouter()
 
 /* ======================
    STATE
 ====================== */
-const search = ref('')
 const page = ref(1)
 const perPage = ref(10)
 
+const search = ref('')
+const sortBy = ref('created_at')     // created_at | name
+const sortOrder = ref('desc')        // asc | desc
+
 const modal = ref(null)
 const pointsModal = ref(null)
-
-const sortBy = ref('default') // default | name | points
-const sortOrder = ref('desc') // asc | desc
 
 const form = ref({
   id: null,
@@ -37,90 +36,54 @@ const pointsForm = reactive({
 /* ======================
    COMPUTED
 ====================== */
-const customers = computed(() => store.state.customers.customers)
-
-const filtered = computed(() => {
-  let list = customers.value
-
-  if (search.value) {
-    const q = search.value.toLowerCase()
-    list = list.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.phone?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q)
-    )
-  }
-
-  // SORT
-  list = [...list].sort((a, b) => {
-    if (sortBy.value === 'name') {
-      return sortOrder.value === 'asc'
-        ? a.name.localeCompare(b.name)
-        : b.name.localeCompare(a.name)
-    }
-
-    if (sortBy.value === 'points') {
-      return sortOrder.value === 'asc'
-        ? (a.points || 0) - (b.points || 0)
-        : (b.points || 0) - (a.points || 0)
-    }
-
-    // DEFAULT = newest first
-    return sortOrder.value === 'asc'
-      ? new Date(a.created_at) - new Date(b.created_at)
-      : new Date(b.created_at) - new Date(a.created_at)
-  })
-
-  return list
-})
+const customers = computed(() => store.state.customers.page || [])
+const total = computed(() => store.state.customers.total || 0)
 
 const totalPages = computed(() =>
-  Math.max(1, Math.ceil(filtered.value.length / perPage.value))
+  Math.max(1, Math.ceil(total.value / perPage.value))
+)
+const paginated = computed(() =>
+  customers.value.map(c => ({
+    ...c,
+    points: Number(c.points ?? 0)
+  }))
 )
 
-const paginated = computed(() => {
-  const start = (page.value - 1) * perPage.value
-  return filtered.value.slice(start, start + perPage.value)
-})
 
 const pageNumbers = computed(() =>
   Array.from({ length: totalPages.value }, (_, i) => i + 1)
 )
 
 /* ======================
-   WATCHERS
+   LOAD
 ====================== */
-watch([search, perPage], () => (page.value = 1))
-
-watch(sortBy, val => {
-  if (val === 'name') sortOrder.value = 'asc'
-  else if (val === 'points') sortOrder.value = 'desc'
-  else sortOrder.value = 'desc'
-})
-
-/* ======================
-   LOAD DATA
-====================== */
-onMounted(async () => {
-  await store.dispatch('customers/loadCustomers')
-
-  // attach points
-  for (const c of customers.value) {
-    c.points = await store.dispatch('customers/getCustomerPoints', c.id)
-  }
-})
-
-/* ======================
-   NAVIGATION
-====================== */
-function goToTransactions(customer, tab = 'points') {
-  router.push({
-    name: 'TransactionHistory',
-    params: { id: customer.id },
-    query: { tab } // optional: 'points' or 'purchases'
+const load = async () => {
+  await store.dispatch('customers/loadCustomersPage', {
+    page: page.value,
+    perPage: perPage.value,
+    search: search.value,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value
   })
 }
 
+/* ======================
+   WATCHERS
+====================== */
+watch([search, sortBy, sortOrder, perPage], () => {
+  page.value = 1
+  load()
+})
+
+watch(page, () => load())
+
+/* ======================
+   PAGINATION
+====================== */
+function goPage(p) {
+  if (p < 1 || p > totalPages.value) return
+  page.value = p
+}
 
 /* ======================
    CUSTOMER MODAL
@@ -139,28 +102,46 @@ function close() {
   modal.value.close()
 }
 
+/* ======================
+   SAVE CUSTOMER
+====================== */
 async function save() {
   if (!form.value.name) return
 
   if (form.value.id) {
     await store.dispatch('customers/editCustomer', form.value)
   } else {
-    console.log('test')
     await store.dispatch('customers/addCustomer', form.value)
   }
 
   close()
+  await load()
 }
 
-function remove(c) {
-  store.dispatch('customers/deleteCustomer', c)
+/* ======================
+   DELETE CUSTOMER
+====================== */
+async function remove(c) {
+  const ok = await Swal.fire({
+    title: 'Delete customer?',
+    text: 'This cannot be undone',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e74c3c',
+    confirmButtonText: 'Delete'
+  })
+
+  if (!ok.isConfirmed) return
+
+  await store.dispatch('customers/deleteCustomer', c)
+  await load()
 }
 
 /* ======================
    POINTS MODAL
 ====================== */
-function openPointsModal(customer) {
-  pointsForm.customer_id = customer.id
+function openPointsModal(c) {
+  pointsForm.customer_id = c.id
   pointsForm.points = 0
   pointsForm.note = ''
   pointsModal.value.showModal()
@@ -172,9 +153,7 @@ function closePointsModal() {
 
 async function savePointsAdjustment() {
   if (!pointsForm.points) return
-
-  if (pointsModal.value?.open) pointsModal.value.close()
-
+  closePointsModal()
   const confirm = await Swal.fire({
     title: 'Confirm points adjustment?',
     text: `Apply ${pointsForm.points > 0 ? 'add' : 'deduct'} points?`,
@@ -183,10 +162,7 @@ async function savePointsAdjustment() {
     confirmButtonText: 'Yes, continue'
   })
 
-  if (!confirm.isConfirmed) {
-    pointsModal.value?.showModal()
-    return
-  }
+  if (!confirm.isConfirmed) return
 
   await store.dispatch('customers/addManualPoints', {
     customer_id: pointsForm.customer_id,
@@ -201,20 +177,19 @@ async function savePointsAdjustment() {
     showConfirmButton: false
   })
 
-  await store.dispatch('customers/loadCustomers')
-
-  // refresh points
-  for (const c of customers.value) {
-    c.points = await store.dispatch('customers/getCustomerPoints', c.id)
-  }
+  closePointsModal()
+  await load()
 }
 
 /* ======================
-   PAGINATION
+   INIT
 ====================== */
-function goPage(p) {
-  if (p < 1 || p > totalPages.value) return
-  page.value = p
+onMounted(load)
+
+const router = useRouter()
+
+function goToTransactionHistory(customerId) {
+  router.push({ name: 'TransactionHistory', params: { id: customerId } })
 }
 </script>
 
@@ -226,13 +201,15 @@ function goPage(p) {
     <div class="top-bar">
       <div class="top-bar-actions">
         <input v-model="search" placeholder="Search name / phone / email" class="input" />
+
         <select v-model.number="perPage" class="input per-page">
           <option :value="5">5</option>
           <option :value="10">10</option>
           <option :value="20">20</option>
         </select>
+
         <select v-model="sortBy" class="input">
-          <option value="default">Newest</option>
+          <option value="created_at">Newest</option>
           <option value="name">Name</option>
           <option value="points">Points</option>
         </select>
@@ -241,7 +218,6 @@ function goPage(p) {
           <option value="desc">Desc</option>
           <option value="asc">Asc</option>
         </select>
-
 
         <button @click="openAdd">Add Customer</button>
       </div>
@@ -259,17 +235,19 @@ function goPage(p) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in paginated" :key="c.id">
+          <tr v-for="c in paginated" :key="c.id"   @click="goToTransactionHistory(c.id)"
+  style="cursor: pointer;">
             <td>{{ c.name }}</td>
             <td>{{ c.address || '-' }}</td>
             <td class="font-semibold">{{ c.points }}</td>
-            <td class="flex gap-1" style="display: flex;gap:8px">
-              <button class="btn-sm" @click="openEdit(c)">Edit</button>
-              <button class="btn-sm danger" @click="remove(c)">Delete</button>
-              <button class="secondary" @click="openPointsModal(c)">Adjust Points</button>
-              <button class="secondary" @click="goToTransactions(c, 'points')">
-                Transactions
-              </button>
+            <td class="flex gap-1" style="
+                    display: flex;
+                    justify-content: center;
+                    gap: 8px;
+                ">
+              <button class="btn-sm" @click.stop="openEdit(c)">Edit</button>
+              <button class="btn-sm danger" @click.stop="remove(c)">Delete</button>
+              <button class="secondary" @click.stop="openPointsModal(c)">Adjust Points</button>
             </td>
           </tr>
         </tbody>
@@ -279,7 +257,14 @@ function goPage(p) {
     <!-- Pagination -->
     <div class="pagination" v-if="totalPages > 1">
       <button :disabled="page === 1" @click="goPage(page - 1)">Prev</button>
-      <button v-for="num in pageNumbers" :key="num" @click="goPage(num)" :class="{ active: page === num }">{{ num }}</button>
+      <button
+        v-for="num in pageNumbers"
+        :key="num"
+        @click="goPage(num)"
+        :class="{ active: page === num }"
+      >
+        {{ num }}
+      </button>
       <button :disabled="page === totalPages" @click="goPage(page + 1)">Next</button>
     </div>
 
@@ -305,7 +290,11 @@ function goPage(p) {
       <h3>Adjust Customer Points</h3>
 
       <div class="modal-form">
-        <input type="number" v-model.number="pointsForm.points" placeholder="Points (+ add / - deduct)" />
+        <input
+          type="number"
+          v-model.number="pointsForm.points"
+          placeholder="Points (+ add / - deduct)"
+        />
         <input v-model="pointsForm.note" placeholder="Note (optional)" />
       </div>
 

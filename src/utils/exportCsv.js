@@ -11,7 +11,7 @@ export function downloadCSV(filename, rows) {
 
   // ===== Calculate totals =====
   const totalTransactions = rows.length
-  const totalSales = rows.reduce((sum, r) => sum + Number(r.total || 0), 0)
+  const totalSales = rows.reduce((sum, r) => sum + Number(r.final_total || 0), 0)
 
   // ===== Add empty row + totals =====
   const rowsWithTotals = [

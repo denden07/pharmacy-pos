@@ -5,42 +5,111 @@ export default {
   namespaced: true,
 
   state: () => ({
-    customers: [],
-    lastCustomerId: null
+    page: [],
+    total: 0,
+    lastCustomerId: null,
+    loading: false
   }),
 
   mutations: {
-    SET_CUSTOMERS(state, customers) {
-      state.customers = customers
+    SET_PAGE(state, rows) {
+      state.page = rows
+    },
+    SET_TOTAL(state, n) {
+      state.total = n
     },
     SET_LAST_CUSTOMER_ID(state, id) {
       state.lastCustomerId = id
+    },
+    SET_LOADING(state, v) {
+      state.loading = v
     }
   },
 
   actions: {
     /* ==========================
-      LOAD CUSTOMERS
+       PAGED LOAD (MAIN ENTRY)
     ========================== */
-    async loadCustomers({ commit }) {
-      const db = await dbPromise
-      const customers = await db.getAll('customers')
+async loadCustomersPage(
+  { commit },
+  { page = 1, perPage = 10, search = '', sortBy = 'created_at', sortOrder = 'desc' }
+) {
+  commit('SET_LOADING', true)
 
-      commit(
-        'SET_CUSTOMERS',
-        customers.map(c => ({
-          ...c,
-          created_at: new Date(c.created_at),
-          updated_at: new Date(c.updated_at)
-        }))
-      )
-    },
+  const db = await dbPromise
+  const tx = db.transaction(['customers', 'points_history'], 'readonly')
+  const store = tx.objectStore('customers')
+  const pointsStore = tx.objectStore('points_history')
+
+  // choose index for cursor
+  const index = sortBy === 'name' ? store.index('name') : store.index('created_at')
+  const direction = sortOrder === 'desc' ? 'prev' : 'next'
+  let cursor = await index.openCursor(null, direction)
+
+  const q = search.trim().toLowerCase()
+  let rows = []
+  let allMatching = [] // store all for points sort if needed
+  let skipped = 0
+  let total = 0
+
+  while (cursor) {
+    const c = cursor.value
+    const match =
+      !q ||
+      c.name.toLowerCase().includes(q) ||
+      (c.phone || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q)
+
+    if (match) {
+      total++ // count total matches
+
+      if (sortBy === 'points') {
+        // collect all for points sorting later
+        allMatching.push({ ...c })
+      } else {
+        // only compute points for the page rows
+        const offset = (page - 1) * perPage
+        if (skipped < offset) {
+          skipped++
+        } else if (rows.length < perPage) {
+          const recs = await pointsStore.index('customer_id').getAll(c.id)
+          c.points = recs.reduce((s, r) => s + Number(r.points || 0), 0)
+          rows.push({ ...c })
+        }
+      }
+    }
+
+    cursor = await cursor.continue().catch(() => null)
+  }
+
+  // sort by points if needed
+  if (sortBy === 'points') {
+    for (const row of allMatching) {
+      const recs = await pointsStore.index('customer_id').getAll(row.id)
+      row.points = recs.reduce((s, r) => s + Number(r.points || 0), 0)
+    }
+
+    allMatching.sort((a, b) =>
+      sortOrder === 'asc' ? a.points - b.points : b.points - a.points
+    )
+
+    const offset = (page - 1) * perPage
+    rows = allMatching.slice(offset, offset + perPage)
+  }
+
+  commit('SET_PAGE', rows)
+  commit('SET_TOTAL', total)
+  commit('SET_LOADING', false)
+},
+
+
+
+
 
     /* ==========================
-      ADD CUSTOMER
+       ADD CUSTOMER
     ========================== */
-    async addCustomer({ commit, dispatch }, payload) {
-      console.log('test')
+    async addCustomer({ commit }, payload) {
       const db = await dbPromise
       const now = new Date()
 
@@ -50,36 +119,28 @@ export default {
         email: payload.email || '',
         address: payload.address || '',
         created_at: now,
-        updated_at: now,
-        points: 0
+        updated_at: now
       })
 
-      console.log(id)
-
       commit('SET_LAST_CUSTOMER_ID', id)
-      await dispatch('loadCustomers')
-
       return id
     },
 
     /* ==========================
-      EDIT CUSTOMER
+       EDIT
     ========================== */
-    async editCustomer({ dispatch }, customer) {
+    async editCustomer(_, customer) {
       const db = await dbPromise
-
       await db.put('customers', {
         ...customer,
         updated_at: new Date()
       })
-
-      await dispatch('loadCustomers')
     },
 
     /* ==========================
-      DELETE CUSTOMER
+       DELETE
     ========================== */
-    async deleteCustomer({ dispatch }, customer) {
+    async deleteCustomer(_, customer) {
       const result = await Swal.fire({
         title: 'Delete Customer?',
         text: 'This action cannot be undone.',
@@ -100,30 +161,10 @@ export default {
         timer: 1200,
         showConfirmButton: false
       })
-
-      await dispatch('loadCustomers')
     },
 
     /* ==========================
-      SEARCH CUSTOMERS
-    ========================== */
-    async searchCustomers(_, keyword) {
-      if (!keyword || !keyword.trim()) return []
-
-      const db = await dbPromise
-      const customers = await db.getAll('customers')
-      const q = keyword.toLowerCase()
-
-      return customers.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q)
-      )
-    },
-
-    /* ==========================
-      ADD POINTS FROM SALE
-      (CALL THIS AFTER SAVING SALE)
+       POINTS
     ========================== */
     async addPointsFromSale(_, { customer_id, sale_id, final_total }) {
       if (!customer_id) return
@@ -132,67 +173,60 @@ export default {
       if (points <= 0) return
 
       const db = await dbPromise
-
       await db.add('points_history', {
         customer_id,
         sale_id,
         points,
+        type: 'sale',
         date: new Date()
       })
     },
 
-    /* ==========================
-      GET CUSTOMER TOTAL POINTS
-    ========================== */
-    async getCustomerPoints(_, customer_id) {
-      const db = await dbPromise
-      const tx = db.transaction('points_history', 'readonly')
-      const store = tx.objectStore('points_history')
 
-      const records = await store
-        .index('customer_id')
-        .getAll(customer_id)
+async addManualPoints(_, { customer_id, points, note = '' }) {
+  if (!customer_id || !Number.isFinite(points) || points === 0) return
 
-      return records.reduce((sum, r) => sum + Number(r.points || 0), 0)
-    },
+  const db = await dbPromise
+  const tx = db.transaction(['points_history', 'yearly_points'], 'readwrite')
+  const pointsStore = tx.objectStore('points_history')
+  const yearlyStore = tx.objectStore('yearly_points')
 
-    // =========================
-    // MANUAL POINTS ADJUSTMENT
-    // =========================
-    async addManualPoints(_, { customer_id, points, note = '' }) {
-      const db = await dbPromise
+  const now = new Date()
+  const year = now.getFullYear()
+  const yearlyKey = [customer_id, year]
 
-      if (!customer_id || !Number.isFinite(points) || points === 0) return
+  // 1️⃣ Add to points_history
+  await pointsStore.add({
+    customer_id,
+    points,
+    type: 'manual',
+    description: note || (points > 0 ? 'Manual add' : 'Manual deduction'),
+    related_sale_id: null,
+    date: now
+  })
 
-      await db.add('points_history', {
-        customer_id,
-        points,                         // + or -
-        type: 'manual',                 // manual | sale | void
-        description: note || (points > 0 ? 'Manual add' : 'Manual deduction'),
-        related_sale_id: null,
-        date: new Date().toISOString()
-      })
+  // 2️⃣ Update yearly_points
+  let yearly = await yearlyStore.get(yearlyKey)
+  if (!yearly) yearly = { customer_id, year, points: 0 }
+  yearly.points += points
+  if (yearly.points < 0) yearly.points = 0
+  await yearlyStore.put(yearly)
 
-
-    },
+  await tx.done
+},
 
 
-    async updateCustomerPoints({ dispatch }, customer) {
-      const db = await dbPromise
-      await db.put('customers', customer)
 
-      // reload customers list
-      dispatch('loadCustomers')
-    }
 
-  },
-
-  getters: {
     async getCustomerPointsHistory(_, customerId) {
       const db = await dbPromise
-      const all = await db.getAll('points_history')
-      return all.filter(p => p.customer_id === customerId)
-    }
-
+      const store = db.transaction('points_history').objectStore('points_history')
+      return store.index('customer_id').getAll(customerId)
+    },
+    async searchCustomers({ state }, keyword) {
+    const db = await dbPromise
+    const all = await db.getAll('customers')
+    return all.filter(c => c.name.toLowerCase().includes(keyword.toLowerCase()))
+  }
   }
 }

@@ -117,8 +117,8 @@ const formatDate = (date) => {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Price 1</th>
-                <th>Price 2</th>
+                <th>Regular</th>
+                <th>Discount</th>
               </tr>
             </thead>
             <tbody>

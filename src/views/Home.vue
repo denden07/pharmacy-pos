@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useStore } from 'vuex'
 import Swal from 'sweetalert2'
 import { dbPromise } from '../db'
@@ -7,7 +7,7 @@ import { dbPromise } from '../db'
 const store = useStore()
 
 // ======================
-// POS refs
+// POS STATE
 // ======================
 const search = ref('')
 const selectedMedicine = ref(null)
@@ -18,7 +18,7 @@ const moneyGiven = ref(0)
 const selectedCustomer = ref(null)
 const showCustomerModal = ref(false)
 const customerSearch = ref('')
-const newCustomer = ref({ name:'', phone:'', address:'' })
+const newCustomer = ref({ name: '', phone: '', address: '' })
 
 // ======================
 // REDEEM POINTS
@@ -28,27 +28,21 @@ const customerPoints = ref(0)
 const redeemMultiplier = ref(1)
 const pointsConfirmed = ref(false)
 
-const pointsUsed = computed(() => {
-  if (!pointsConfirmed.value) return 0
-  return redeemMultiplier.value * customerPoints.value
-})
-
-
-const pointsDiscount = computed(() => pointsUsed.value) // ₱1 = 1pt
+const pointsUsed = computed(() => pointsConfirmed.value ? customerPoints.value * redeemMultiplier.value : 0)
+const pointsDiscount = computed(() => pointsUsed.value)
 
 // ======================
 // Focus tracking for number pad
 // ======================
 const focusedItem = ref(null)
 const focusedField = ref('')
-
 const setActiveInput = (item, field) => {
   focusedItem.value = item
   focusedField.value = field
 }
 
 // ======================
-// Number pad functions
+// NUMBER PAD
 // ======================
 const appendNumber = (num) => {
   if (!focusedField.value) return
@@ -83,96 +77,131 @@ const clearInput = () => {
 }
 
 // ======================
-// LOAD MEDICINES & CUSTOMERS
+// MEDICINES SEARCH (WITH LATEST PRICE)
 // ======================
-onMounted(async () => {
-  if (!store.state.medicines.medicines.length) {
-    await store.dispatch('medicines/loadMedicines')
+// ======================
+// MASTER MEDICINES CACHE
+// ======================
+const medicinesMap = ref({}) // id => medicine object
+let filteredMedicines = ref ({})
+
+watch(search, async (val) => {
+  const q = val.trim().toLowerCase()
+  if (!q) {
+    filteredMedicines.value = []
+    return
   }
-  await store.dispatch('customers/loadCustomers')
+
+  const db = await dbPromise
+  const meds = await db.getAll('medicines')
+
+  const matches = meds.filter(m =>
+    m.name.toLowerCase().includes(q) ||
+    (m.generic_name || '').toLowerCase().includes(q)
+  )
+
+  // use table prices directly
+  for (const m of matches) {
+    m.price1 = Number(m.price1 || 0)
+    m.price2 = Number(m.price2 || m.price1)
+
+    medicinesMap.value[m.id] = m // cache it
+  }
+
+  filteredMedicines.value = matches
 })
 
-const medicines = computed(() => store.state.medicines.medicines || [])
-const customers = computed(() => store.state.customers.customers || [])
+// ======================
+// CUSTOMERS SEARCH (ACCURATE POINTS)
+// ======================
+const filteredCustomers = ref([])
 
-const filteredMedicines = computed(() => {
-  const keyword = search.value.trim().toLowerCase()
-  if (!keyword) return []
-  return medicines.value.filter(m =>
-    m.name.toLowerCase().includes(keyword) ||
-    (m.generic_name || '').toLowerCase().includes(keyword)
-  )
-})
+watch(customerSearch, async (val) => {
+  const q = val.trim().toLowerCase()
+  if (!q) {
+    filteredCustomers.value = []
+    return
+  }
 
-const filteredCustomers = computed(() => {
-  const k = customerSearch.value.toLowerCase()
-  return customers.value.filter(c =>
-    c.name.toLowerCase().includes(k) ||
-    (c.phone || '').includes(k)
+  const db = await dbPromise
+  const customers = await db.getAll('customers')
+
+  const matches = customers.filter(c =>
+    c.name.toLowerCase().includes(q) ||
+    (c.phone || '').includes(q)
   )
+
+  const year = new Date().getFullYear()
+  const yearlyStore = db.transaction('yearly_points').objectStore('yearly_points')
+
+  for (const c of matches) {
+    const yearly = await yearlyStore.get([c.id, year])
+    c.points = yearly?.points || 0
+  }
+
+  filteredCustomers.value = matches
 })
 
 // ======================
 // CART LOGIC
 // ======================
 const addToCart = (med) => {
-  const price = selectedPriceType.value === 'regular' ? med.price1 : med.price2
+  const price = selectedPriceType.value === 'regular'
+    ? med.price1
+    : med.price2
+
   const existing = cart.value.find(i => i.id === med.id && i.priceType === selectedPriceType.value)
 
-  if (existing) {
-    existing.qty += 1
-  } else {
-    cart.value.push({
-      id: med.id,
-      name: med.name,
-      generic_name: med.generic_name || '',
-      priceType: selectedPriceType.value,
-      price,
-      qty: 1
-    })
-  }
+  if (existing) existing.qty += 1
+  else cart.value.push({
+    id: med.id,
+    name: med.name,
+    generic_name: med.generic_name || '',
+    priceType: selectedPriceType.value,
+    price,
+    qty: 1
+  })
 
   search.value = ''
+  filteredMedicines.value = []
 }
+
+
+const setPriceType = (item, type) => {
+  const med = medicinesMap.value[item.id] // <-- always the original med
+  if (!med) return
+  item.priceType = type
+  item.price = type === 'regular' ? med.price1 : med.price2
+}
+
 
 const removeItem = (id) => {
   cart.value = cart.value.filter(i => i.id !== id)
 }
 
-const updatePriceType = (item, type) => {
-  item.priceType = type
-  const med = medicines.value.find(m => m.id === item.id)
-  item.price = type === 'regular' ? med.price1 : med.price2
+
+const getPrice = (medId, type) => {
+  const med = filteredMedicines.value.find(m => m.id === medId) || cart.value.find(m => m.id === medId)
+  if (!med) return '0.00'
+  const price = type === 'regular' 
+    ? Number(med.price1 || 0) 
+    : Number(med.price2 || med.price1 || 0)
+  return price.toFixed(2)
 }
+
 
 // ======================
 // TOTALS
 // ======================
-const subTotal = computed(() =>
-  cart.value.reduce((sum, i) => sum + i.price * i.qty, 0)
-)
-
-const grandTotal = computed(() => {
-  const total =
-    Number(subTotal.value) +
-    Number(professionalFee.value || 0) -
-    Number(pointsDiscount.value || 0)
-
-  return total < 0 ? 0 : total
-})
-
-const change = computed(() =>
-  Math.max((moneyGiven.value || 0) - grandTotal.value, 0)
-)
+const subTotal = computed(() => cart.value.reduce((sum, i) => sum + i.price * i.qty, 0))
+const grandTotal = computed(() => Math.max(subTotal.value + Number(professionalFee.value || 0) - Number(pointsDiscount.value || 0), 0))
+const change = computed(() => Math.max((moneyGiven.value || 0) - grandTotal.value, 0))
 
 // ======================
 // REDEEM FLOW
 // ======================
 const openRedeemModal = () => {
-  if (!selectedCustomer.value) {
-    Swal.fire('Select customer first')
-    return
-  }
+  if (!selectedCustomer.value) return Swal.fire('Select customer first')
   redeemMultiplier.value = 1
   showRedeemModal.value = true
 }
@@ -188,64 +217,66 @@ const removePoints = () => {
 }
 
 // ======================
-// CHECKOUT
+// CHECKOUT & SAVE SALE
 // ======================
 const checkout = async () => {
-  if (!cart.value.length) {
-    Swal.fire({ icon:'warning', title:'Empty cart', text:'Please add items before saving the sale.' })
-    return
-  }
+  if (!cart.value.length)
+    return Swal.fire({
+      icon: 'warning',
+      title: 'Empty cart',
+      text: 'Please add items before saving the sale.'
+    })
 
-  if ((moneyGiven.value || 0) < grandTotal.value) {
-    Swal.fire({ icon:'warning', title:'Insufficient payment', text:'Customer money is less than total.' })
-    return
-  }
+  if ((moneyGiven.value || 0) < grandTotal.value)
+    return Swal.fire({
+      icon: 'warning',
+      title: 'Insufficient payment',
+      text: 'Customer money is less than total.'
+    })
 
-  const result = await Swal.fire({
-    title:'Confirm Sale',
+  // Confirmation first
+  const confirmResult = await Swal.fire({
+    title: 'Confirm Checkout',
     html: `
-      <p><strong>Subtotal:</strong> ₱${subTotal.value.toFixed(2)}</p>
-      <p><strong>Professional Fee:</strong> ₱${professionalFee.value || 0}</p>
-      <p><strong>Points Discount:</strong> -₱${pointsDiscount.value}</p>
-      <p><strong>Money Given:</strong> ₱${moneyGiven.value || 0}</p>
-     
-      <hr/>
-      <h3><strong>Change:</strong> ₱${change.value.toFixed(2)}</h3>
-      <h3>Total: ₱${grandTotal.value.toFixed(2)}</h3>
+      Total: ₱${grandTotal.value.toFixed(2)}<br/>
+      Money Given: ₱${moneyGiven.value.toFixed(2)}<br/>
+      Change: ₱${change.value.toFixed(2)}
     `,
-    icon:'question',
-    showCancelButton:true,
-    confirmButtonText:'Save Sale',
-    cancelButtonText:'Cancel',
-    reverseButtons:true
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, Save Sale',
+    cancelButtonText: 'Cancel',
   })
 
-  if (!result.isConfirmed) return
+  if (!confirmResult.isConfirmed) return
 
   try {
     const saleId = await store.dispatch('sales/saveSale', {
-      customer_id: selectedCustomer.value?.id || null,
       cart: cart.value,
       subTotal: subTotal.value,
-      professionalFee: professionalFee.value || 0,
+      professionalFee: professionalFee.value,
       discount: pointsDiscount.value,
       finalTotal: grandTotal.value,
-      moneyGiven: moneyGiven.value || 0,
+      customer_id: selectedCustomer.value?.id || null,
+      moneyGiven: moneyGiven.value,
       change: change.value,
-      pointsUsed: pointsConfirmed.value ? customerPoints.value : 0,
-      pointsMultiplier: pointsConfirmed.value ? redeemMultiplier.value : 1,
+      purchased_date: new Date().toISOString(),
+
+      // Points
+      pointsUsed: pointsUsed.value,
+      pointsMultiplier: redeemMultiplier.value,
       pointsDiscount: pointsDiscount.value
     })
 
-    await Swal.fire({
-      icon:'success',
-      title:'Sale Saved',
-      text:`Sale #${saleId} saved.`,
-      timer:1500,
-      showConfirmButton:false
+    Swal.fire({
+      icon: 'success',
+      title: 'Sale Completed',
+      text: `Sale #${saleId} saved`,
+      timer: 1500,
+      showConfirmButton: false
     })
 
-    // reset POS
+    // RESET POS
     cart.value = []
     professionalFee.value = 0
     moneyGiven.value = 0
@@ -256,28 +287,42 @@ const checkout = async () => {
 
   } catch (err) {
     console.error(err)
-    Swal.fire({ icon:'error', title:'Save failed', text:'Something went wrong while saving the sale.' })
+    Swal.fire({ icon: 'error', title: 'Checkout Failed', text: err.message || 'Something went wrong.' })
   }
 }
 
-
-
 // ======================
-// CUSTOMERS
+// SELECT CUSTOMER
 // ======================
 const selectCustomer = async (cust) => {
-  selectedCustomer.value = cust
+  const db = await dbPromise
+  const fullCustomer = await db.get('customers', cust.id)
+  selectedCustomer.value = fullCustomer
   showCustomerModal.value = false
 
-  const db = await dbPromise
   const year = new Date().getFullYear()
-  const yearly = await db.get('yearly_points', [cust.id, year])
 
-  customerPoints.value = yearly?.points || 0
+  // Get all points_history entries for this customer
+  const tx = db.transaction('points_history')
+  const pointsStore = tx.objectStore('points_history')
+  const index = pointsStore.index('customer_id')
+  const allPoints = await index.getAll(cust.id)
+
+  // Filter only current year
+  const yearPoints = allPoints.filter(p => new Date(p.date).getFullYear() === year)
+
+  // Sum all points
+  customerPoints.value = yearPoints.reduce((sum, p) => sum + Number(p.points || 0), 0)
+
   redeemMultiplier.value = 1
   pointsConfirmed.value = false
 }
 
+
+
+// ======================
+// ADD CUSTOMER
+// ======================
 const addCustomer = async () => {
   if (!newCustomer.value.name) return
 
@@ -291,32 +336,7 @@ const addCustomer = async () => {
   newCustomer.value = { name:'', phone:'', address:'' }
   showCustomerModal.value = false
 }
-
-const setPriceType = (item, type) => {
-  const med = medicines.value.find(m => m.id === item.id)
-  if (!med) return
-
-  if (type === 'regular') {
-    item.priceType = 'regular'
-    item.price = Number(med.price1)
-  } else {
-    item.priceType = 'discount'
-    item.price = Number(med.price2 || med.price1)
-  }
-}
-
-const getPrice = (medId, type) => {
-  const med = medicines.value.find(m => m.id === medId)
-  if (!med) return 0
-
-  return type === 'regular'
-    ? Number(med.price1).toFixed(2)
-    : Number(med.price2 || med.price1).toFixed(2)
-}
-
-
 </script>
-
 
 <template>
 <h1 style="font-size: 32px;">Calculator</h1>
@@ -394,21 +414,22 @@ const getPrice = (medId, type) => {
               <div class="med-generic" v-if="item.generic_name">{{ item.generic_name }}</div>
             </td>
             <td>
-              <div class="price-toggle">
-                <button
-                  :class="{ active: item.priceType === 'regular', inactive: item.priceType !== 'regular' }"
-                  @click="setPriceType(item, 'regular')"
-                >
-                  Reg ₱{{ getPrice(item.id, 'regular') }}
-                </button>
+<div class="price-toggle">
+  <button
+    :class="{ active: item.priceType === 'regular', inactive: item.priceType !== 'regular' }"
+    @click="setPriceType(item, 'regular')"
+  >
+    Reg ₱{{ medicinesMap[item.id]?.price1.toFixed(2) || '0.00' }}
+  </button>
 
-                <button
-                  :class="{ active: item.priceType === 'discount', inactive: item.priceType !== 'discount' }"
-                  @click="setPriceType(item, 'discount')"
-                >
-                  Dis ₱{{ getPrice(item.id, 'discount') }}
-                </button>
-              </div>
+  <button
+    :class="{ active: item.priceType === 'discount', inactive: item.priceType !== 'discount' }"
+    @click="setPriceType(item, 'discount')"
+  >
+    Dis ₱{{ medicinesMap[item.id]?.price2.toFixed(2) || '0.00' }}
+  </button>
+</div>
+
             </td>
             <td>
               <div class="qty-wrapper">
