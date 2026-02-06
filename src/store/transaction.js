@@ -76,7 +76,7 @@ export default {
         type: 'sale',
         related_sale_id: payload.sale_id,
         notes: 'Auto from sale',
-        date: new Date()
+        date: new Date().toISOString()
       })
 
       await dispatch('loadPointsHistory', payload.customer_id)

@@ -88,7 +88,8 @@ async saveSale({ commit }, payload) {
     // Points
     pointsUsed = 0,
     pointsMultiplier = 1,
-    pointsDiscount = 0
+    pointsDiscount = 0,
+    payment_method = 'Cash'
   } = payload
 
   if (!cart.length) throw new Error('Cart is empty')
@@ -105,11 +106,11 @@ async saveSale({ commit }, payload) {
   const pointsStore = tx.objectStore('points_history')
   const yearlyStore = tx.objectStore('yearly_points')
 
-  const now = new Date()
+  const now = new Date().toISOString()
 
   // Save sale
   const saleId = await salesStore.add({
-    purchased_date: purchased_date ? new Date(purchased_date) : now,
+    purchased_date: purchased_date ? new Date(purchased_date).toISOString() : now.toISOString(),
     created_at: now,
     customer_id: customer_id || null,
     total_amount: subTotal,
@@ -121,7 +122,8 @@ async saveSale({ commit }, payload) {
     status: 'completed',
     points_used: pointsUsed,
     points_multiplier: pointsMultiplier,
-    points_discount: pointsDiscount
+    points_discount: pointsDiscount,
+    payment_method
   })
 
   // Deduct inventory
@@ -146,7 +148,8 @@ async saveSale({ commit }, payload) {
 
   // Handle points
   if (customer_id) {
-    const year = now.getFullYear()
+    const get_now = new Date()
+    const year = get_now.getFullYear()
     const yearlyKey = [customer_id, year]
 
     let yearly = await yearlyStore.get(yearlyKey)
@@ -201,9 +204,9 @@ async saveSale({ commit }, payload) {
       const sales = allSales
         .map(s => ({
           ...s,
-          purchased_date: new Date(s.purchased_date || s.created_at || new Date()),
-          created_at: new Date(s.created_at || new Date()),
-          date: new Date(s.date || s.created_at || new Date()),
+          purchased_date: new Date(s.purchased_date || s.created_at || new Date().toISOString()),
+          created_at: new Date(s.created_at || new Date().toISOString()),
+          date: new Date(s.date || s.created_at || new Date().toISOString()),
           status: s.status || 'completed'
         }))
         .sort((a, b) => b.date - a.date)

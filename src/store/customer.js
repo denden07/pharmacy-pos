@@ -32,70 +32,47 @@ export default {
     ========================== */
 async loadCustomersPage(
   { commit },
-  { page = 1, perPage = 10, search = '', sortBy = 'created_at', sortOrder = 'desc' }
+  { page = 1, perPage = 10, search = '', sortBy = 'id', sortOrder = 'desc' }
 ) {
   commit('SET_LOADING', true)
 
   const db = await dbPromise
-  const tx = db.transaction(['customers', 'points_history'], 'readonly')
+  const tx = db.transaction(['customers', 'yearly_points'], 'readonly')
   const store = tx.objectStore('customers')
-  const pointsStore = tx.objectStore('points_history')
+  const yearlyStore = tx.objectStore('yearly_points')
 
-  // choose index for cursor
-  const index = sortBy === 'name' ? store.index('name') : store.index('created_at')
-  const direction = sortOrder === 'desc' ? 'prev' : 'next'
-  let cursor = await index.openCursor(null, direction)
+  let all = await store.getAll()
 
   const q = search.trim().toLowerCase()
-  let rows = []
-  let allMatching = [] // store all for points sort if needed
-  let skipped = 0
-  let total = 0
-
-  while (cursor) {
-    const c = cursor.value
-    const match =
-      !q ||
-      c.name.toLowerCase().includes(q) ||
+  if (q) {
+    all = all.filter(c =>
+      c.name?.toLowerCase().includes(q) ||
       (c.phone || '').toLowerCase().includes(q) ||
       (c.email || '').toLowerCase().includes(q)
-
-    if (match) {
-      total++ // count total matches
-
-      if (sortBy === 'points') {
-        // collect all for points sorting later
-        allMatching.push({ ...c })
-      } else {
-        // only compute points for the page rows
-        const offset = (page - 1) * perPage
-        if (skipped < offset) {
-          skipped++
-        } else if (rows.length < perPage) {
-          const recs = await pointsStore.index('customer_id').getAll(c.id)
-          c.points = recs.reduce((s, r) => s + Number(r.points || 0), 0)
-          rows.push({ ...c })
-        }
-      }
-    }
-
-    cursor = await cursor.continue().catch(() => null)
-  }
-
-  // sort by points if needed
-  if (sortBy === 'points') {
-    for (const row of allMatching) {
-      const recs = await pointsStore.index('customer_id').getAll(row.id)
-      row.points = recs.reduce((s, r) => s + Number(r.points || 0), 0)
-    }
-
-    allMatching.sort((a, b) =>
-      sortOrder === 'asc' ? a.points - b.points : b.points - a.points
     )
-
-    const offset = (page - 1) * perPage
-    rows = allMatching.slice(offset, offset + perPage)
   }
+
+  // attach yearly points
+  const year = new Date().getFullYear()
+  for (const c of all) {
+    const rec = await yearlyStore.get([c.id, year])
+    c.points = Number(rec?.points || 0)
+  }
+
+  // sort (SAFE)
+  all.sort((a, b) => {
+    let A = a[sortBy] ?? 0
+    let B = b[sortBy] ?? 0
+
+    if (typeof A === 'string') A = A.toLowerCase()
+    if (typeof B === 'string') B = B.toLowerCase()
+
+    return sortOrder === 'asc' ? (A > B ? 1 : -1) : (A < B ? 1 : -1)
+  })
+
+  const total = all.length
+  const start = (page - 1) * perPage
+  const rows = all.slice(start, start + perPage)
 
   commit('SET_PAGE', rows)
   commit('SET_TOTAL', total)
@@ -106,12 +83,13 @@ async loadCustomersPage(
 
 
 
+
     /* ==========================
        ADD CUSTOMER
     ========================== */
     async addCustomer({ commit }, payload) {
       const db = await dbPromise
-      const now = new Date()
+      const now = new Date().toISOString()
 
       const id = await db.add('customers', {
         name: payload.name,
@@ -133,7 +111,7 @@ async loadCustomersPage(
       const db = await dbPromise
       await db.put('customers', {
         ...customer,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       })
     },
 
@@ -178,7 +156,7 @@ async loadCustomersPage(
         sale_id,
         points,
         type: 'sale',
-        date: new Date()
+        date: new Date().toISOString()
       })
     },
 
@@ -191,8 +169,9 @@ async addManualPoints(_, { customer_id, points, note = '' }) {
   const pointsStore = tx.objectStore('points_history')
   const yearlyStore = tx.objectStore('yearly_points')
 
-  const now = new Date()
-  const year = now.getFullYear()
+  const now = new Date().toISOString()
+  const get_now = new Date()
+  const year = get_now.getFullYear()
   const yearlyKey = [customer_id, year]
 
   // 1️⃣ Add to points_history

@@ -13,7 +13,7 @@ const page = ref(1)
 const perPage = ref(10)
 
 const search = ref('')
-const sortBy = ref('created_at')     // created_at | name
+const sortBy = ref('id')    // created_at | name
 const sortOrder = ref('desc')        // asc | desc
 
 const modal = ref(null)
@@ -209,9 +209,9 @@ function goToTransactionHistory(customerId) {
         </select>
 
         <select v-model="sortBy" class="input">
-          <option value="created_at">Newest</option>
-          <option value="name">Name</option>
-          <option value="points">Points</option>
+        <option value="id">Newest</option>
+        <option value="name">Name</option>
+        <option value="points">Points</option>
         </select>
 
         <select v-model="sortOrder" class="input">

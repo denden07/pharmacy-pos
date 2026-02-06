@@ -12,10 +12,18 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
+    "@capacitor/device": "^8.0.0",
+    "@capacitor/filesystem": "^8.1.0",
+    "@capacitor/share": "^8.0.0",
+    "@capawesome/capacitor-file-picker": "^8.0.1",
+    "apexcharts": "^5.3.6",
+    "date-fns": "^4.1.0",
     "idb": "^8.0.3",
     "sweetalert2": "^11.26.17",
     "vue": "^3.5.24",
+    "vue-chartjs": "^5.3.3",
     "vue-router": "^4.6.4",
+    "vue3-apexcharts": "^1.10.0",
     "vuex": "^4.1.0"
   },
   "devDependencies": {

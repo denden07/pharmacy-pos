@@ -510,6 +510,7 @@ const exportCSV = async () => {
           <th>Discount</th>
           <th>Prof Fee</th>
           <th>Total</th>
+          <th>Payment</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -522,6 +523,7 @@ const exportCSV = async () => {
           <td>₱{{ fmt(sale.discount) }}</td>
           <td>₱{{ fmt(sale.professional_fee) }}</td>
           <td><strong>₱{{ fmt(sale.final_total) }}</strong></td>
+          <td>{{ sale.payment_method || 'Cash' }}</td>
           <td :class="sale.status === 'voided' ? 'status-voided' : 'status-ok'">{{ sale.status }}</td>
           <td style="display: flex;gap:8px">
             <button @click="openSaleModal(sale)">View</button>
@@ -550,6 +552,9 @@ const exportCSV = async () => {
             </div>
             <div class="sale-meta">
               Customer: {{ saleCustomer ? saleCustomer.name : 'Walk-in' }}
+            </div>
+            <div class="sale-meta">
+              Payment: {{ selectedSale.payment_method || 'Cash' }}
             </div>
           </div>
 

@@ -41,6 +41,8 @@ const setActiveInput = (item, field) => {
   focusedField.value = field
 }
 
+const paymentMethod = ref('cash') // default
+
 // ======================
 // NUMBER PAD
 // ======================
@@ -265,7 +267,8 @@ const checkout = async () => {
       // Points
       pointsUsed: pointsUsed.value,
       pointsMultiplier: redeemMultiplier.value,
-      pointsDiscount: pointsDiscount.value
+      pointsDiscount: pointsDiscount.value,
+      payment_method: paymentMethod.value,
     })
 
     Swal.fire({
@@ -296,28 +299,25 @@ const checkout = async () => {
 // ======================
 const selectCustomer = async (cust) => {
   const db = await dbPromise
+
+  // load full customer
   const fullCustomer = await db.get('customers', cust.id)
   selectedCustomer.value = fullCustomer
   showCustomerModal.value = false
 
   const year = new Date().getFullYear()
 
-  // Get all points_history entries for this customer
-  const tx = db.transaction('points_history')
-  const pointsStore = tx.objectStore('points_history')
-  const index = pointsStore.index('customer_id')
-  const allPoints = await index.getAll(cust.id)
+  // 🔁 READ ONLY FROM yearly_points (single source of truth)
+  const yearly = await db
+    .transaction('yearly_points')
+    .objectStore('yearly_points')
+    .get([cust.id, year])
 
-  // Filter only current year
-  const yearPoints = allPoints.filter(p => new Date(p.date).getFullYear() === year)
-
-  // Sum all points
-  customerPoints.value = yearPoints.reduce((sum, p) => sum + Number(p.points || 0), 0)
+  customerPoints.value = yearly?.points || 0
 
   redeemMultiplier.value = 1
   pointsConfirmed.value = false
 }
-
 
 
 // ======================
@@ -519,6 +519,23 @@ const addCustomer = async () => {
       <button class="num-btn" @click="appendNumber(0)">0</button>
       <button class="num-btn" @click="backspace">←</button>
     </div>
+
+    <div class="payment-toggle">
+      <button
+        :class="{ active: paymentMethod === 'cash' }"
+        @click="paymentMethod = 'cash'"
+      >
+        💵 Cash
+      </button>
+
+      <button
+        :class="{ active: paymentMethod === 'gcash' }"
+        @click="paymentMethod = 'gcash'"
+      >
+        📱 GCash
+      </button>
+    </div>
+
 
     <button class="btn checkout" @click="checkout">Save Sale</button>
   </div>
@@ -1060,5 +1077,26 @@ th, td {
   padding: 2px 5px !important;
   color: #fff !important
 }
+
+.payment-toggle {
+  display: flex;
+  gap: 6px;
+  height: auto !important;
+}
+.payment-toggle button {
+  flex: 1;
+  height: 34px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  background: #ccc;
+  color: #222;
+    height: auto !important;
+}
+.payment-toggle button.active {
+  background: #28a745;
+  color: #fff;
+}
+
 
 </style>

@@ -45,6 +45,7 @@ const menuItems = [
   { name: 'Sales', path: '/sales', icon: '💰' },
   { name: 'Customers', path: '/customers', icon: '🧑‍🤝‍🧑' },
   { name: 'Analytics', path: '/analytics', icon: '📊' },
+  { name: 'Settings', path: '/settings', icon: '⚙️' }, // ⚙️ Settings
 ]
 
 const isActive = (path) => route.path === path

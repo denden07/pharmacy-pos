@@ -169,8 +169,8 @@ export default {
       const data = {
         ...medicine,
         is_archived: false,
-        created_at: new Date(),
-        updated_at: new Date()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
       const id = await db.add('medicines', data)
@@ -179,7 +179,7 @@ export default {
         medicine_id: id,
         price1: medicine.price1,
         price2: medicine.price2,
-        changed_at: new Date()
+        changed_at: new Date().toISOString()
       })
     },
 
@@ -196,7 +196,7 @@ export default {
 
       await db.put('medicines', {
         ...medicine,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       })
 
       if (priceChanged) {
@@ -204,7 +204,7 @@ export default {
           medicine_id: medicine.id,
           price1: medicine.price1,
           price2: medicine.price2,
-          changed_at: new Date()
+          changed_at: new Date().toISOString()
         })
       }
     },
@@ -217,7 +217,7 @@ export default {
       await db.put('medicines', {
         ...medicine,
         is_archived: true,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       })
     },
 
@@ -226,7 +226,7 @@ export default {
       await db.put('medicines', {
         ...medicine,
         is_archived: false,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       })
     },
 

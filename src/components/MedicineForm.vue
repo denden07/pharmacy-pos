@@ -124,7 +124,7 @@ const submitForm = async () => {
       medicine_id: medicineId,
       quantity: Number(adjustmentQty.value), // can be + or -
       expiry_date: expiryDate.value || null,
-      created_at: new Date(),
+      created_at: new Date().toISOString(),
       reason: adjustmentQty.value > 0 ? 'RESTOCK' : 'ADJUSTMENT'
     })
   }

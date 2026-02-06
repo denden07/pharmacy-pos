@@ -8,6 +8,7 @@ import Sales from '../views/Sales.vue'
 import Customers from '../views/Customers.vue'
 import Analytics from '../views/Analytics.vue'
 import TransactionHistory from '../views/TransactionHistory.vue'
+import Settings from '../views/Settings.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: Home },
@@ -16,6 +17,7 @@ const routes = [
   { path: '/sales', name: 'Sales', component: Sales },
   { path: '/customers', name: 'Customers', component: Customers },
   { path: '/analytics', name: 'Analytics', component: Analytics },
+  { path: '/settings', name: 'Settings', component: Settings },
   {
     path: '/customers/:id/transactions',
     name: 'TransactionHistory',
