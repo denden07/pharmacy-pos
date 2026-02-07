@@ -126,25 +126,32 @@ async saveSale({ commit }, payload) {
     payment_method
   })
 
-  // Deduct inventory
-  for (const item of cart) {
-    const allBatches = await batchesStore.index('medicine_id').getAll(item.id)
-    const availableBatch = allBatches.find(b => b.quantity >= item.qty)
-    if (!availableBatch) throw new Error(`Not enough stock for ${item.name}`)
+// Deduct inventory (allow stock = 0)
+for (const item of cart) {
+  const allBatches = await batchesStore.index('medicine_id').getAll(item.id)
+  const availableBatch = allBatches.find(b => b.quantity >= item.qty)
 
+  let batchId = null
+  if (availableBatch) {
     availableBatch.quantity -= item.qty
     await batchesStore.put(availableBatch)
-
-    await itemsStore.add({
-      sale_id: saleId,
-      medicine_id: item.id,
-      quantity: item.qty,
-      price_at_sale: item.price,
-      price_type: item.priceType,
-      batch_id: availableBatch.id,
-      is_piece_or_box: 'piece'
-    })
+    batchId = availableBatch.id
+  } else {
+    // No stock available, record sale anyway
+    batchId = null
   }
+
+  await itemsStore.add({
+    sale_id: saleId,
+    medicine_id: item.id,
+    quantity: item.qty,
+    price_at_sale: item.price,
+    price_type: item.priceType,
+    batch_id: batchId, // null if no stock
+    is_piece_or_box: 'piece'
+  })
+}
+
 
   // Handle points
   if (customer_id) {

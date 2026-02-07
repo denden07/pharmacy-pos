@@ -96,18 +96,20 @@ watch(search, async (val) => {
 
   const db = await dbPromise
   const meds = await db.getAll('medicines')
+  const batches = await db.getAll('inventory_batches')
 
   const matches = meds.filter(m =>
     m.name.toLowerCase().includes(q) ||
     (m.generic_name || '').toLowerCase().includes(q)
   )
 
-  // use table prices directly
   for (const m of matches) {
-    m.price1 = Number(m.price1 || 0)
-    m.price2 = Number(m.price2 || m.price1)
+    const medBatches = batches.filter(b => b.medicine_id === m.id)
+    const totalStock = medBatches.reduce((sum, b) => sum + (b.quantity || 0), 0)
 
-    medicinesMap.value[m.id] = m // cache it
+    m.quantity = totalStock
+    m.stockIndicator = getStockIndicator({ quantity: totalStock })
+    medicinesMap.value[m.id] = m
   }
 
   filteredMedicines.value = matches
@@ -236,14 +238,23 @@ const checkout = async () => {
       text: 'Customer money is less than total.'
     })
 
-  // Confirmation first
+  // Optional: check stock and warn
+  const lowStockItems = cart.value.filter(item => (medicinesMap.value[item.id]?.quantity || 0) <= 0)
+  if (lowStockItems.length) {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Warning',
+      html: `Some items have no stock:<br/>${lowStockItems.map(i => i.name).join(', ')}<br/>You can still proceed with the sale.`,
+      confirmButtonText: 'Proceed Anyway'
+    })
+  }
+
+  // Confirmation
   const confirmResult = await Swal.fire({
     title: 'Confirm Checkout',
-    html: `
-      Total: ₱${grandTotal.value.toFixed(2)}<br/>
-      Money Given: ₱${moneyGiven.value.toFixed(2)}<br/>
-      Change: ₱${change.value.toFixed(2)}
-    `,
+    html: `Total: ₱${grandTotal.value.toFixed(2)}<br/>
+           Money Given: ₱${moneyGiven.value.toFixed(2)}<br/>
+           Change: ₱${change.value.toFixed(2)}`,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'Yes, Save Sale',
@@ -279,7 +290,7 @@ const checkout = async () => {
       showConfirmButton: false
     })
 
-    // RESET POS
+    // Reset POS
     cart.value = []
     professionalFee.value = 0
     moneyGiven.value = 0
@@ -293,6 +304,7 @@ const checkout = async () => {
     Swal.fire({ icon: 'error', title: 'Checkout Failed', text: err.message || 'Something went wrong.' })
   }
 }
+
 
 // ======================
 // SELECT CUSTOMER
@@ -336,6 +348,18 @@ const addCustomer = async () => {
   newCustomer.value = { name:'', phone:'', address:'' }
   showCustomerModal.value = false
 }
+
+const getStockIndicator = (med) => {
+  if (!med.quantity || med.quantity <= 0) {
+    return { icon: '▲!', color: 'red', text: 'Out of stock', quantity: 0 }
+  } else if (med.quantity < 10) {
+    return { icon: '▲', color: 'orange', text: `Low stock: ${med.quantity}`, quantity: med.quantity }
+  } else {
+    return { icon: '', color: 'green', text: `Stock: ${med.quantity}`, quantity: med.quantity }
+  }
+}
+
+
 </script>
 
 <template>
@@ -347,12 +371,32 @@ const addCustomer = async () => {
   <button class="btn select-customer" @click="showCustomerModal=true">Select Customer</button>
 
   <!-- Dropdown -->
-  <div v-if="search && filteredMedicines.length" class="dropdown">
-    <div v-for="med in filteredMedicines" :key="med.id" class="dropdown-item" @click="addToCart(med)">
-      <div class="med-name">{{ med.name }}</div>
-      <div class="med-generic" v-if="med.generic_name">{{ med.generic_name }}</div>
+<div v-if="search && filteredMedicines.length" class="dropdown">
+  <div v-for="med in filteredMedicines" :key="med.id" class="dropdown-item" @click="addToCart(med)">
+    <div class="dropdown-item-content">
+      <div>
+        <div class="med-name">{{ med.name }}</div>
+        <div class="med-generic" v-if="med.generic_name">{{ med.generic_name }}</div>
+      </div>
+
+      <!-- Stock indicator -->
+      <div 
+        class="stock-indicator" 
+        :title="med.stockIndicator.text"
+        :class="{
+          'out-of-stock': med.quantity <= 0,
+          'low-stock': med.quantity > 0 && med.quantity < 10,
+          'normal-stock': med.quantity >= 10
+        }"
+      >
+        <!-- <span>{{ med.stockIndicator.icon }}</span> -->
+        <span>Remaining QTY:  {{ med.quantity }}</span>
+      </div>
     </div>
   </div>
+</div>
+
+
 </div>
 
 <!-- Selected Customer Badge + Redeem Buttons -->
@@ -649,6 +693,7 @@ const addCustomer = async () => {
 .dropdown-item {
   padding: 8px 12px;
   cursor: pointer;
+  border: 1px solid lightgrey;
 }
 .dropdown-item:hover {
   background: #f0f8ff;
@@ -934,8 +979,9 @@ th, td {
 /* =========================
    MED NAMES
 ========================= */
+.med-name { font-size: 20px;}
 .med-name-table { font-weight:700; }
-.med-generic { font-size:12px; color:#888; }
+.med-generic { font-size:16px; color:#888; }
 
 /* =========================
    DARK MODE
@@ -1098,5 +1144,39 @@ th, td {
   color: #fff;
 }
 
+.dropdown-item-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: column;
+  gap:8px;
+}
+
+.stock-indicator {
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+/* Colors for different stock levels */
+.stock-indicator.out-of-stock {
+  color: #fff;
+  background-color: #e74c3c; /* red */
+}
+
+.stock-indicator.low-stock {
+  color: #fff;
+  background-color: #f39c12; /* orange */
+}
+
+.stock-indicator.normal-stock {
+  color: #fff;
+  background-color: #27ae60; /* green */
+}
 
 </style>
