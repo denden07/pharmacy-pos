@@ -46,11 +46,26 @@ const paymentMethod = ref('cash') // default
 // ======================
 // NUMBER PAD
 // ======================
-const appendNumber = (num) => {
+const appendNumber = async (num) => {
   if (!focusedField.value) return
 
   if (focusedField.value === 'qty' && focusedItem.value) {
-    focusedItem.value.qty = Number(String(focusedItem.value.qty) + num)
+    const newQty = Number(String(focusedItem.value.qty) + num)
+    const currentStock = medicinesMap.value[focusedItem.value.id]?.quantity || 0
+    
+    // Warn if exceeding stock
+    if (newQty > currentStock) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Exceeding Stock',
+        html: `<b>${focusedItem.value.name}</b><br/>Available: ${currentStock}<br/>New Quantity: ${newQty}<br/><br/>This will result in negative inventory!`,
+        confirmButtonText: 'Continue',
+        timer: 2000,
+        timerProgressBar: true
+      })
+    }
+    
+    focusedItem.value.qty = newQty
   } else if (focusedField.value === 'professionalFee') {
     professionalFee.value = Number(String(professionalFee.value) + num)
   } else if (focusedField.value === 'moneyGiven') {
@@ -149,12 +164,27 @@ watch(customerSearch, async (val) => {
 // ======================
 // CART LOGIC
 // ======================
-const addToCart = (med) => {
+const addToCart = async (med) => {
   const price = selectedPriceType.value === 'regular'
     ? med.price1
     : med.price2
 
   const existing = cart.value.find(i => i.id === med.id && i.priceType === selectedPriceType.value)
+  const currentStock = medicinesMap.value[med.id]?.quantity || 0
+  const cartQty = existing ? existing.qty : 0
+  const newQty = cartQty + 1
+
+  // Warning if exceeding stock
+  if (newQty > currentStock) {
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Low Stock Warning',
+      html: `<b>${med.name}</b><br/>Available: ${currentStock}<br/>Cart Total: ${newQty}<br/><br/>You are exceeding available stock!`,
+      confirmButtonText: 'Add Anyway',
+      timer: 2000,
+      timerProgressBar: true
+    })
+  }
 
   if (existing) existing.qty += 1
   else cart.value.push({
@@ -238,15 +268,27 @@ const checkout = async () => {
       text: 'Customer money is less than total.'
     })
 
-  // Optional: check stock and warn
-  const lowStockItems = cart.value.filter(item => (medicinesMap.value[item.id]?.quantity || 0) <= 0)
-  if (lowStockItems.length) {
-    await Swal.fire({
+  // Check stock and warn for all items exceeding available quantity
+  const stockWarnings = []
+  for (const item of cart.value) {
+    const available = medicinesMap.value[item.id]?.quantity || 0
+    if (item.qty > available) {
+      const shortage = item.qty - available
+      stockWarnings.push(`<b>${item.name}</b>: Need ${item.qty}, Available ${available} (Short by ${shortage})`)
+    }
+  }
+  
+  if (stockWarnings.length) {
+    const result = await Swal.fire({
       icon: 'warning',
-      title: 'Warning',
-      html: `Some items have no stock:<br/>${lowStockItems.map(i => i.name).join(', ')}<br/>You can still proceed with the sale.`,
-      confirmButtonText: 'Proceed Anyway'
+      title: 'Stock Warning',
+      html: `The following items exceed available stock:<br/><br/>${stockWarnings.join('<br/>')}<br/><br/>Inventory will go negative. Continue?`,
+      showCancelButton: true,
+      confirmButtonText: 'Proceed Anyway',
+      cancelButtonText: 'Review Cart'
     })
+    
+    if (!result.isConfirmed) return
   }
 
   // Confirmation
@@ -486,7 +528,21 @@ const getStockIndicator = (med) => {
                   @click="setActiveInput(item,'qty')"
                   :class="{ 'active-input': focusedField==='qty' && focusedItem===item }"
                 />
-                <button @click="item.qty += 1">+</button>
+                <button @click="async () => {
+                  const newQty = item.qty + 1
+                  const currentStock = medicinesMap[item.id]?.quantity || 0
+                  if (newQty > currentStock) {
+                    await Swal.fire({
+                      icon: 'warning',
+                      title: 'Exceeding Stock',
+                      html: `<b>${item.name}</b><br/>Available: ${currentStock}<br/>New Quantity: ${newQty}<br/><br/>This will result in negative inventory!`,
+                      confirmButtonText: 'Continue',
+                      timer: 2000,
+                      timerProgressBar: true
+                    })
+                  }
+                  item.qty = newQty
+                }">+</button>
               </div>
             </td>
             <td>₱{{ (item.price * item.qty).toFixed(2) }}</td>
@@ -834,7 +890,7 @@ th, td {
   gap: 4px;
 }
 .num-btn {
-  height: 36px;
+  height: 50px;
   border-radius: 6px;
   border: none;
   background: #3498db;
@@ -1147,8 +1203,6 @@ th, td {
 .dropdown-item-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  flex-direction: column;
   gap:8px;
 }
 

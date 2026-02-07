@@ -23,11 +23,11 @@ export default {
     SET_CURRENT_PAGE(state, page) {
       state.currentPage = page
     },
+    SET_ITEMS_PER_PAGE(state, val) {
+      state.itemsPerPage = val
+    },
     SET_TOTAL_COUNT(state, count) {
       state.totalSalesCount = count
-    },
-    SET_SALES(state, list) {
-      state.sales = list
     },
     SET_LOADING(state, val) {
       state.loading = val
@@ -35,8 +35,6 @@ export default {
     SET_SALE_DETAILS(state, payload) {
       state.saleDetails = payload
     }
-
-
   },
 
   actions: {
@@ -126,19 +124,37 @@ async saveSale({ commit }, payload) {
     payment_method
   })
 
-// Deduct inventory (allow stock = 0)
+// Deduct inventory (allow negative quantities)
 for (const item of cart) {
   const allBatches = await batchesStore.index('medicine_id').getAll(item.id)
-  const availableBatch = allBatches.find(b => b.quantity >= item.qty)
-
-  let batchId = null
-  if (availableBatch) {
-    availableBatch.quantity -= item.qty
-    await batchesStore.put(availableBatch)
-    batchId = availableBatch.id
+  
+  let remainingQty = item.qty
+  let primaryBatchId = null
+  
+  // Try to find a batch with sufficient quantity first
+  const sufficientBatch = allBatches.find(b => b.quantity >= remainingQty)
+  
+  if (sufficientBatch) {
+    // Deduct from batch with sufficient quantity
+    sufficientBatch.quantity -= remainingQty
+    await batchesStore.put(sufficientBatch)
+    primaryBatchId = sufficientBatch.id
+  } else if (allBatches.length > 0) {
+    // No sufficient batch, use the first available batch and allow negative
+    const firstBatch = allBatches[0]
+    firstBatch.quantity -= remainingQty  // This can go negative
+    await batchesStore.put(firstBatch)
+    primaryBatchId = firstBatch.id
   } else {
-    // No stock available, record sale anyway
-    batchId = null
+    // No batches exist at all, create a negative batch
+    primaryBatchId = await batchesStore.add({
+      medicine_id: item.id,
+      quantity: -remainingQty,  // Create with negative quantity
+      batch_number: 'AUTO-NEG-' + Date.now(),
+      expiry_date: null,
+      cost_price: 0,
+      added_date: now
+    })
   }
 
   await itemsStore.add({
@@ -147,7 +163,7 @@ for (const item of cart) {
     quantity: item.qty,
     price_at_sale: item.price,
     price_type: item.priceType,
-    batch_id: batchId, // null if no stock
+    batch_id: primaryBatchId,
     is_piece_or_box: 'piece'
   })
 }
@@ -229,13 +245,18 @@ for (const item of cart) {
       const db = await dbPromise
       const tx = db.transaction('sales')
       const store = tx.objectStore('sales')
-      const index = store.index('purchased_date') // make sure this exists
+      const index = store.index('purchased_date')
 
       // 1️⃣ Count total sales with filters
       let range = null
-      if (startDate && endDate) range = IDBKeyRange.bound(new Date(startDate), new Date(endDate + 'T23:59:59'))
-      else if (startDate) range = IDBKeyRange.lowerBound(new Date(startDate))
-      else if (endDate) range = IDBKeyRange.upperBound(new Date(endDate + 'T23:59:59'))
+      if (startDate && endDate) {
+        // Use ISO strings for comparison since purchased_date is stored as ISO string
+        range = IDBKeyRange.bound(startDate + 'T00:00:00', endDate + 'T23:59:59')
+      } else if (startDate) {
+        range = IDBKeyRange.lowerBound(startDate + 'T00:00:00')
+      } else if (endDate) {
+        range = IDBKeyRange.upperBound(endDate + 'T23:59:59')
+      }
 
       // For total count with filters, we need to iterate through cursor
       let totalCount = 0
@@ -455,7 +476,8 @@ async voidSale({ dispatch }, sale) {
             discount: sale.discount,
             final_total: sale.final_total,
             money_given: sale.money_given,
-            change: sale.change
+            change: sale.change,
+            payment_method: sale.payment_method || 'Cash'
           })
         }
 
