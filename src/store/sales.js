@@ -94,7 +94,7 @@ async saveSale({ commit }, payload) {
 
   const db = await dbPromise
   const tx = db.transaction(
-    ['sales', 'sale_items', 'inventory_batches', 'points_history', 'yearly_points', 'customers'],
+    ['sales', 'sale_items', 'inventory_batches', 'points_history', 'yearly_points', 'customers', 'medicines'],
     'readwrite'
   )
 
@@ -103,6 +103,7 @@ async saveSale({ commit }, payload) {
   const batchesStore = tx.objectStore('inventory_batches')
   const pointsStore = tx.objectStore('points_history')
   const yearlyStore = tx.objectStore('yearly_points')
+  const medicinesStore = tx.objectStore('medicines')
 
   const now = new Date().toISOString()
 
@@ -166,6 +167,13 @@ for (const item of cart) {
     batch_id: primaryBatchId,
     is_piece_or_box: 'piece'
   })
+
+  // Update medicine with last_sold_at timestamp
+  const medicine = await medicinesStore.get(item.id)
+  if (medicine) {
+    medicine.last_sold_at = now
+    await medicinesStore.put(medicine)
+  }
 }
 
 

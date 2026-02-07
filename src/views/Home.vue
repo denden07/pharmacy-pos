@@ -46,26 +46,11 @@ const paymentMethod = ref('cash') // default
 // ======================
 // NUMBER PAD
 // ======================
-const appendNumber = async (num) => {
+const appendNumber = (num) => {
   if (!focusedField.value) return
 
   if (focusedField.value === 'qty' && focusedItem.value) {
-    const newQty = Number(String(focusedItem.value.qty) + num)
-    const currentStock = medicinesMap.value[focusedItem.value.id]?.quantity || 0
-    
-    // Warn if exceeding stock
-    if (newQty > currentStock) {
-      await Swal.fire({
-        icon: 'warning',
-        title: 'Exceeding Stock',
-        html: `<b>${focusedItem.value.name}</b><br/>Available: ${currentStock}<br/>New Quantity: ${newQty}<br/><br/>This will result in negative inventory!`,
-        confirmButtonText: 'Continue',
-        timer: 2000,
-        timerProgressBar: true
-      })
-    }
-    
-    focusedItem.value.qty = newQty
+    focusedItem.value.qty = Number(String(focusedItem.value.qty) + num)
   } else if (focusedField.value === 'professionalFee') {
     professionalFee.value = Number(String(professionalFee.value) + num)
   } else if (focusedField.value === 'moneyGiven') {
@@ -291,16 +276,75 @@ const checkout = async () => {
     if (!result.isConfirmed) return
   }
 
-  // Confirmation
+  // Confirmation with detailed breakdown
+  const itemsTable = `
+    <div style="max-height: 400px; overflow-y: auto; margin: 16px 0; border: 1px solid #ddd; border-radius: 4px;">
+      <table style="width:100%; border-collapse: collapse; text-align: left;">
+        <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 1;">
+          <tr style="border-bottom: 2px solid #ddd;">
+            <th style="padding: 8px;">Medicine</th>
+            <th style="padding: 8px; text-align: center;">Qty</th>
+            <th style="padding: 8px; text-align: right;">Price</th>
+            <th style="padding: 8px; text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cart.value.map(item => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 8px;">${item.name}</td>
+              <td style="padding: 8px; text-align: center;">${item.qty}</td>
+              <td style="padding: 8px; text-align: right;">₱${item.price.toFixed(2)}</td>
+              <td style="padding: 8px; text-align: right;">₱${(item.price * item.qty).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    
+    <div style="margin-top: 16px; padding: 12px; background: #f9f9f9; border-radius: 4px;">
+      <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+        <span>Subtotal:</span>
+        <span>₱${subTotal.value.toFixed(2)}</span>
+      </div>
+      ${professionalFee.value > 0 ? `
+        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+          <span>Professional Fee:</span>
+          <span>₱${professionalFee.value.toFixed(2)}</span>
+        </div>
+      ` : ''}
+      ${pointsDiscount.value > 0 ? `
+        <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #e53e3e;">
+          <span>Discount:</span>
+          <span>-₱${pointsDiscount.value.toFixed(2)}</span>
+        </div>
+      ` : ''}
+      <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+        <span>Money Given:</span>
+        <span>₱${moneyGiven.value.toFixed(2)}</span>
+      </div>
+      <hr style="margin: 8px 0; border: none; border-top: 1px solid #ddd;" />
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; font-size: 18px; font-weight: bold; color: #2d3748;">
+        <span>Grand Total:</span>
+        <span style="color: green;">₱${grandTotal.value.toFixed(2)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 8px 0; font-size: 18px; font-weight: bold; color: #2d3748;">
+        <span>Change:</span>
+        <span style="color: red;">₱${change.value.toFixed(2)}</span>
+      </div>
+    </div>
+  `
+  
   const confirmResult = await Swal.fire({
     title: 'Confirm Checkout',
-    html: `Total: ₱${grandTotal.value.toFixed(2)}<br/>
-           Money Given: ₱${moneyGiven.value.toFixed(2)}<br/>
-           Change: ₱${change.value.toFixed(2)}`,
+    html: itemsTable,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'Yes, Save Sale',
     cancelButtonText: 'Cancel',
+    width: '700px',
+    customClass: {
+      popup: 'swal-wide'
+    }
   })
 
   if (!confirmResult.isConfirmed) return
@@ -509,6 +553,7 @@ const getStockIndicator = (med) => {
   </button>
 
   <button
+    v-if="medicinesMap[item.id]?.price2 && medicinesMap[item.id]?.price2 > 0"
     :class="{ active: item.priceType === 'discount', inactive: item.priceType !== 'discount' }"
     @click="setPriceType(item, 'discount')"
   >
@@ -528,21 +573,7 @@ const getStockIndicator = (med) => {
                   @click="setActiveInput(item,'qty')"
                   :class="{ 'active-input': focusedField==='qty' && focusedItem===item }"
                 />
-                <button @click="async () => {
-                  const newQty = item.qty + 1
-                  const currentStock = medicinesMap[item.id]?.quantity || 0
-                  if (newQty > currentStock) {
-                    await Swal.fire({
-                      icon: 'warning',
-                      title: 'Exceeding Stock',
-                      html: `<b>${item.name}</b><br/>Available: ${currentStock}<br/>New Quantity: ${newQty}<br/><br/>This will result in negative inventory!`,
-                      confirmButtonText: 'Continue',
-                      timer: 2000,
-                      timerProgressBar: true
-                    })
-                  }
-                  item.qty = newQty
-                }">+</button>
+                <button @click="item.qty += 1">+</button>
               </div>
             </td>
             <td>₱{{ (item.price * item.qty).toFixed(2) }}</td>
@@ -869,7 +900,7 @@ th, td {
   font-weight: 600;
 }
 .right-panel input {
-  height: 36px;
+  height: 40px;
   border-radius: 6px;
   border: 1px solid #ccc;
   padding: 0 10px;

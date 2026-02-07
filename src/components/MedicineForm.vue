@@ -77,8 +77,7 @@ onMounted(() => loadMedicineData(props.medicineToEdit))
 const isValid = computed(() => {
   return (
     name.value.trim() !== '' &&
-    price1.value > 0 &&
-    price2.value > 0
+    price1.value > 0
   )
 })
 
@@ -148,7 +147,7 @@ const submitForm = async () => {
       <label>Regular Price</label>
       <input v-model.number="price1" type="number" min="0" />
 
-      <label>Discounted Price</label>
+      <label>Discounted Price (optional)</label>
       <input v-model.number="price2" type="number" min="0" />
 
       <hr />

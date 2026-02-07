@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 export const DB_NAME = 'pharmacy_pos_db';
-export const DB_VERSION = 12; // 🔼 bump version
+export const DB_VERSION = 14; // 🔼 bump version
 
 export const dbPromise = openDB(DB_NAME, DB_VERSION, {
   upgrade(db, oldVersion, newVersion, transaction) {
@@ -16,6 +16,18 @@ export const dbPromise = openDB(DB_NAME, DB_VERSION, {
       store.createIndex('generic_name', 'generic_name');
       store.createIndex('price1', 'price1');
       store.createIndex('price2', 'price2');
+      store.createIndex('last_sold_at', 'last_sold_at');
+      store.createIndex('updated_at', 'updated_at');
+    } else if (oldVersion < 13) {
+      const store = transaction.objectStore('medicines');
+      if (!store.indexNames.contains('last_sold_at')) {
+        store.createIndex('last_sold_at', 'last_sold_at');
+      }
+    } else if (oldVersion < 14) {
+      const store = transaction.objectStore('medicines');
+      if (!store.indexNames.contains('updated_at')) {
+        store.createIndex('updated_at', 'updated_at');
+      }
     }
 
     /* =========================

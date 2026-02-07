@@ -96,6 +96,21 @@ export default {
       }
 
       commit('SET_TOTAL_COUNT', count)
+      
+      // Sort by most recent activity (sold or updated), then by id
+      list.sort((a, b) => {
+        const soldA = a.last_sold_at ? new Date(a.last_sold_at).getTime() : 0
+        const soldB = b.last_sold_at ? new Date(b.last_sold_at).getTime() : 0
+        const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0
+        const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0
+        
+        const latestA = Math.max(soldA, updatedA)
+        const latestB = Math.max(soldB, updatedB)
+        
+        if (latestB !== latestA) return latestB - latestA
+        return b.id - a.id
+      })
+      
       commit('SET_MEDICINES', list)
 
       // Load related data only for this page

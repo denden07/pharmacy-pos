@@ -10,6 +10,20 @@ import { downloadCSV } from '../utils/exportCsv'
 const store = useStore()
 const router = useRouter()
 
+/* ======================
+   SORTING
+====================== */
+const sortBy = ref('')
+const sortOrder = ref('asc') // 'asc' or 'desc'
+
+const toggleSort = (field) => {
+  if (sortBy.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortBy.value = field
+    sortOrder.value = 'asc'
+  }
+}
 
 /* ======================
    FILTERS & PAGINATION
@@ -403,7 +417,25 @@ const itemsPerPage = computed({
 })
 const totalSalesCount = computed(() => store.state.sales.totalSalesCount)
 const totalPages = computed(() => Math.ceil(totalSalesCount.value / itemsPerPage.value))
-const sales = computed(() => store.state.sales.sales)
+const sales = computed(() => {
+  const list = store.state.sales.sales
+  
+  if (!sortBy.value) return list
+  
+  return [...list].sort((a, b) => {
+    let aVal = a[sortBy.value] || ''
+    let bVal = b[sortBy.value] || ''
+    
+    // For payment_method, default to 'Cash' if not set
+    if (sortBy.value === 'payment_method') {
+      aVal = aVal || 'Cash'
+      bVal = bVal || 'Cash'
+    }
+    
+    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+    return sortOrder.value === 'asc' ? comparison : -comparison
+  })
+})
 
 console.log(sales)
 
@@ -510,8 +542,12 @@ const exportCSV = async () => {
           <th>Discount</th>
           <th>Prof Fee</th>
           <th>Total</th>
-          <th>Payment</th>
-          <th>Status</th>
+          <th @click="toggleSort('payment_method')" style="cursor: pointer; user-select: none;">
+            Payment {{ sortBy === 'payment_method' ? (sortOrder === 'asc' ? '↑' : '↓') : '' }}
+          </th>
+          <th @click="toggleSort('status')" style="cursor: pointer; user-select: none;">
+            Status {{ sortBy === 'status' ? (sortOrder === 'asc' ? '↑' : '↓') : '' }}
+          </th>
           <th>Actions</th>
         </tr>
       </thead>

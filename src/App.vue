@@ -14,7 +14,7 @@ import Sidebar from '../src/components/Sidebar.vue'
 const sidebarWidth = ref(220)
 
 const onSidebarToggle = (isOpen) => {
-  sidebarWidth.value = isOpen ? 260 : 100
+  sidebarWidth.value = isOpen ? 260 : 70
   document.documentElement.style.setProperty(
     '--sidebar-width',
     sidebarWidth.value + 'px'

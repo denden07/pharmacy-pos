@@ -24,7 +24,7 @@ const toggleSidebar = () => {
   isOpen.value = !isOpen.value
   document.documentElement.style.setProperty(
     '--sidebar-width',
-    isOpen.value ? '220px' : '60px'
+    isOpen.value ? '220px' : '40px'
   )
 
   emit('toggle', isOpen.value)
@@ -59,13 +59,10 @@ const isActive = (path) => route.path === path
     </button>
 
     <!-- Night Mode -->
-    <div class="night-mode">
-      <label v-if="isOpen">
-        <input type="checkbox" :checked="isDarkMode" @change="toggleNightMode" />
-        Night Mode
-      </label>
-      <span v-else title="Night Mode">🌙</span>
-    </div>
+    <button class="night-mode-btn" @click="toggleNightMode">
+      <span class="icon">🌙</span>
+      <span v-if="isOpen">Night Mode</span>
+    </button>
 
     <h2 v-if="isOpen" class="sidebar-title">Pharmacy POS</h2>
 
@@ -100,8 +97,8 @@ const isActive = (path) => route.path === path
 
 /* COLLAPSED */
 .sidebar.collapsed {
-  width: 60px;
-  min-width: 60px;
+  width: 40px;
+  min-width: 40px;
 }
 
 
@@ -124,11 +121,23 @@ const isActive = (path) => route.path === path
   align-items: center;
 }
 
-/* NIGHT MODE */
-.night-mode {
-  margin-bottom: 16px;
-  display: flex;
-  justify-content: center;
+/* NIGHT MODE BUTTON */
+.night-mode-btn {
+  margin-bottom: 12px;
+  background: #34495e;
+}
+
+.night-mode-btn:hover {
+  background: #3b4c60;
+}
+
+body.dark-mode .night-mode-btn {
+  background: #ffc107;
+  color: #000;
+}
+
+body.dark-mode .night-mode-btn:hover {
+  background: #ffb300;
 }
 
 /* TITLE */
