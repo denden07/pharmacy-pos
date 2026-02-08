@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import MedicineForm from '../components/MedicineForm.vue'
 import MedicineViewModal from '../components/MedicineViewModal.vue'
+import Pagination from '../components/Pagination.vue'
 import Swal from 'sweetalert2'
 
 const store = useStore()
@@ -217,24 +218,7 @@ const restoreMedicine = async med => {
     </table>
 
     <!-- Pagination -->
-    <div class="pagination" v-if="totalPages > 1">
-      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">
-        Prev
-      </button>
-
-      <button
-        v-for="n in pageNumbers"
-        :key="n"
-        @click="goPage(n)"
-        :class="{ active: currentPage === n }"
-      >
-        {{ n }}
-      </button>
-
-      <button @click="goPage(currentPage + 1)" :disabled="currentPage === totalPages">
-        Next
-      </button>
-    </div>
+    <Pagination v-model:page="currentPage" :total-pages="totalPages" :max-pages="5" />
 
     <!-- Modals -->
     <MedicineForm

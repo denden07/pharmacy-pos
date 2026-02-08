@@ -4,6 +4,7 @@ import Swal from 'sweetalert2'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { downloadCSV } from '../utils/exportCsv'
+import Pagination from '../components/Pagination.vue'
 
 
 
@@ -571,11 +572,7 @@ const exportCSV = async () => {
     </table>
 
     <!-- PAGINATION -->
-    <div class="pagination" v-if="totalPages > 1">
-      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">Prev</button>
-      <button v-for="num in pageNumbers" :key="num" @click="goPage(num)" :class="{ active: currentPage === num }">{{ num }}</button>
-      <button @click="goPage(currentPage + 1)" :disabled="currentPage === totalPages">Next</button>
-    </div>
+    <Pagination v-model:page="currentPage" :total-pages="totalPages" :max-pages="5" />
 
     <!-- VIEW SALE MODAL -->
     <div v-if="showView" class="modal-backdrop">

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import Pagination from '../components/Pagination.vue'
 import { useStore } from 'vuex'
 import { dbPromise } from '../db'
 
@@ -212,9 +213,7 @@ const closeSaleModal = () => {
             <span
               v-if="p.related_sale_id"
               class="sale-link"
-              @click="openSaleModal(
-                sales.find(s => s.id === p.related_sale_id)
-              )"
+              @click="openSaleModal(sales.find(s => s.id === p.related_sale_id))"
             >
               #{{ p.related_sale_id }}
             </span>
@@ -259,25 +258,7 @@ const closeSaleModal = () => {
     </table>
 
     <!-- PAGINATION -->
-    <div class="pagination" v-if="totalPages > 1">
-      <button @click="goPage(currentPage - 1)" :disabled="currentPage === 1">
-        Prev
-      </button>
-      <button
-        v-for="n in pageNumbers"
-        :key="n"
-        @click="goPage(n)"
-        :class="{ active: currentPage === n }"
-      >
-        {{ n }}
-      </button>
-      <button
-        @click="goPage(currentPage + 1)"
-        :disabled="currentPage === totalPages"
-      >
-        Next
-      </button>
-    </div>
+    <Pagination v-model:page="currentPage" :total-pages="totalPages" :max-pages="5" />
 
     <!-- SALE MODAL -->
     <div v-if="showSaleModal" class="modal-overlay">

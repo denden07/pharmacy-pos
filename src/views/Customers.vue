@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, reactive } from 'vue'
 import { useStore } from 'vuex'
 import Swal from 'sweetalert2'
 import { useRouter } from 'vue-router'
+import Pagination from '../components/Pagination.vue'
 
 const store = useStore()
 
@@ -255,18 +256,7 @@ function goToTransactionHistory(customerId) {
     </div>
 
     <!-- Pagination -->
-    <div class="pagination" v-if="totalPages > 1">
-      <button :disabled="page === 1" @click="goPage(page - 1)">Prev</button>
-      <button
-        v-for="num in pageNumbers"
-        :key="num"
-        @click="goPage(num)"
-        :class="{ active: page === num }"
-      >
-        {{ num }}
-      </button>
-      <button :disabled="page === totalPages" @click="goPage(page + 1)">Next</button>
-    </div>
+    <Pagination v-model:page="page" :total-pages="totalPages" :max-pages="5" />
 
     <!-- CUSTOMER MODAL -->
     <dialog ref="modal" class="modal">
