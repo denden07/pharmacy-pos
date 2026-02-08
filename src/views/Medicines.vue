@@ -22,6 +22,10 @@ const currentPage = ref(1)
 const itemsPerPage = ref(10)
 const itemsPerPageOptions = [5, 10, 20, 50]
 
+// Sorting
+const sortBy = ref('') // '', 'name', 'stock'
+const sortOrder = ref('asc') // 'asc' | 'desc'
+
 // Vuex state
 const medicines = computed(() => store.state.medicines.medicines)
 const stockMap = computed(() => store.state.medicines.stockMap)
@@ -37,14 +41,16 @@ const loadPage = () => {
     page: currentPage.value,
     itemsPerPage: itemsPerPage.value,
     filter: filterMode.value,
-    keyword: searchKeyword.value
+    keyword: searchKeyword.value,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value
   })
 }
 
 onMounted(loadPage)
 
 // 🔄 React to changes
-watch([currentPage, itemsPerPage, filterMode], loadPage)
+watch([currentPage, itemsPerPage, filterMode, sortBy, sortOrder], loadPage)
 watch(searchKeyword, () => {
   currentPage.value = 1
   loadPage()
@@ -89,6 +95,17 @@ const goPage = p => {
 const pageNumbers = computed(() =>
   Array.from({ length: totalPages.value }, (_, i) => i + 1)
 )
+
+// Toggle sort helper
+const toggleSort = field => {
+  if (sortBy.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortBy.value = field
+    sortOrder.value = 'asc'
+  }
+  currentPage.value = 1
+}
 
 // Archive / Restore
 const archiveMedicine = async med => {
@@ -152,11 +169,17 @@ const restoreMedicine = async med => {
     <table>
       <thead>
         <tr>
-          <th>Brand</th>
+          <th @click="toggleSort('name')" style="cursor:pointer">
+            Brand
+            <span v-if="sortBy === 'name'">{{ sortOrder === 'asc' ? ' ↑' : ' ↓' }}</span>
+          </th>
           <th>Generic</th>
           <th>Regular price</th>
           <th>Discount price</th>
-          <th>Stock</th>
+          <th @click="toggleSort('stock')" style="cursor:pointer">
+            Stock
+            <span v-if="sortBy === 'stock'">{{ sortOrder === 'asc' ? ' ↑' : ' ↓' }}</span>
+          </th>
           <th>Actions</th>
         </tr>
       </thead>

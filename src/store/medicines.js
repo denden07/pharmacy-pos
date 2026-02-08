@@ -45,20 +45,15 @@ export default {
     // =============================
     async loadMedicinesPage(
       { commit, state, dispatch },
-      { page, itemsPerPage, filter, keyword }
+      { page, itemsPerPage, filter, keyword, sortBy, sortOrder }
     ) {
       commit('SET_LOADING', true)
 
       const db = await dbPromise
       const store = db.transaction('medicines').objectStore('medicines')
-
-      const offset = (page - 1) * itemsPerPage
-      let count = 0
-      let i = 0
-      let list = []
-
+      // Collect all matching items first, then sort and paginate in-memory.
+      const all = []
       let cursor = await store.openCursor()
-
       while (cursor) {
         const m = { is_archived: false, ...cursor.value }
 
@@ -84,33 +79,59 @@ export default {
           }
         }
 
-        count++
-
-        if (i >= offset && list.length < itemsPerPage) {
-          list.push(m)
-        }
-        i++
-
-        if (list.length >= itemsPerPage) break
+        all.push(m)
         cursor = await cursor.continue()
       }
 
-      commit('SET_TOTAL_COUNT', count)
-      
-      // Sort by most recent activity (sold or updated), then by id
-      list.sort((a, b) => {
-        const soldA = a.last_sold_at ? new Date(a.last_sold_at).getTime() : 0
-        const soldB = b.last_sold_at ? new Date(b.last_sold_at).getTime() : 0
-        const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0
-        const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0
-        
-        const latestA = Math.max(soldA, updatedA)
-        const latestB = Math.max(soldB, updatedB)
-        
-        if (latestB !== latestA) return latestB - latestA
-        return b.id - a.id
-      })
-      
+      commit('SET_TOTAL_COUNT', all.length)
+
+      // Apply sorting
+      const order = (a, b, dir = 'desc') => (dir === 'asc' ? a - b : b - a)
+
+      if (sortBy === 'name') {
+        all.sort((a, b) => {
+          const na = (a.name || '').toLowerCase()
+          const nb = (b.name || '').toLowerCase()
+          if (na === nb) return 0
+          if (sortOrder === 'asc') return na < nb ? -1 : 1
+          return na > nb ? -1 : 1
+        })
+      } else if (sortBy === 'stock') {
+        // compute stock for all items
+        const invStore = db.transaction('inventory_batches').objectStore('inventory_batches')
+        const stockMap = {}
+        let c2 = await invStore.openCursor()
+        while (c2) {
+          const b = c2.value
+          if (!stockMap[b.medicine_id]) stockMap[b.medicine_id] = 0
+          stockMap[b.medicine_id] += b.quantity || 0
+          c2 = await c2.continue()
+        }
+        all.sort((a, b) => {
+          const sa = stockMap[a.id] || 0
+          const sb = stockMap[b.id] || 0
+          return sortOrder === 'asc' ? sa - sb : sb - sa
+        })
+      } else {
+        // default: sort by most recent activity (sold or updated), then by id
+        all.sort((a, b) => {
+          const soldA = a.last_sold_at ? new Date(a.last_sold_at).getTime() : 0
+          const soldB = b.last_sold_at ? new Date(b.last_sold_at).getTime() : 0
+          const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0
+          const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0
+
+          const latestA = Math.max(soldA, updatedA)
+          const latestB = Math.max(soldB, updatedB)
+
+          if (latestB !== latestA) return latestB - latestA
+          return b.id - a.id
+        })
+      }
+
+      // Paginate
+      const offset = (page - 1) * itemsPerPage
+      const list = all.slice(offset, offset + itemsPerPage)
+
       commit('SET_MEDICINES', list)
 
       // Load related data only for this page
