@@ -278,7 +278,7 @@ const checkout = async () => {
 
   // Confirmation with detailed breakdown
   const itemsTable = `
-    <div style="max-height: 400px; overflow-y: auto; margin: 16px 0; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="max-height: 40vh; overflow-y: scroll; margin: 16px 0; border: 1px solid #ddd; border-radius: 4px;">
       <table style="width:100%; border-collapse: collapse; text-align: left;">
         <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 1;">
           <tr style="border-bottom: 2px solid #ddd;">
@@ -341,7 +341,9 @@ const checkout = async () => {
     showCancelButton: true,
     confirmButtonText: 'Yes, Save Sale',
     cancelButtonText: 'Cancel',
-    width: '700px',
+    width: '90%',
+    heightAuto: true,
+    allowOutsideClick: false,
     customClass: {
       popup: 'swal-wide'
     }
@@ -1262,6 +1264,25 @@ th, td {
 .stock-indicator.normal-stock {
   color: #fff;
   background-color: #27ae60; /* green */
+}
+
+/* SweetAlert modal tweaks for small screens/tablets */
+.swal-wide {
+  max-height: calc(100vh - 32px) !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+  margin: 12px !important;
+}
+.swal-wide .swal2-title {
+  position: sticky !important;
+  top: 0 !important;
+  background: #fff !important;
+  z-index: 3 !important;
+  padding-top: 8px !important;
+}
+.swal-wide .swal2-content {
+  /* ensure content can scroll independently if needed */
+  overflow: visible !important;
 }
 
 </style>
