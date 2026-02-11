@@ -5,8 +5,8 @@ import { useRouter, useRoute } from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 
-// Sidebar open state
-const isOpen = ref(true)
+// Menu drawer state (closed by default)
+const isOpen = ref(false)
 
 // Night mode
 const isDarkMode = ref(localStorage.getItem('darkMode') === 'true')
@@ -16,24 +16,20 @@ if (isDarkMode.value) {
   document.body.classList.add('dark-mode')
 }
 
-const emit = defineEmits(['toggle'])
-
-
-// Toggle sidebar
-const toggleSidebar = () => {
+// Toggle menu drawer
+const toggleMenu = () => {
   isOpen.value = !isOpen.value
-  document.documentElement.style.setProperty(
-    '--sidebar-width',
-    isOpen.value ? '220px' : '40px'
-  )
+}
 
-  emit('toggle', isOpen.value)
+// Close menu when navigating
+const navigateTo = (path) => {
+  router.push(path)
+  isOpen.value = false
 }
 
 // Toggle dark mode
 const toggleNightMode = () => {
   isDarkMode.value = !isDarkMode.value
-
   document.body.classList.toggle('dark-mode', isDarkMode.value)
   localStorage.setItem('darkMode', isDarkMode.value)
 }
@@ -45,86 +41,188 @@ const menuItems = [
   { name: 'Sales', path: '/sales', icon: '💰' },
   { name: 'Customers', path: '/customers', icon: '🧑‍🤝‍🧑' },
   { name: 'Analytics', path: '/analytics', icon: '📊' },
-  { name: 'Settings', path: '/settings', icon: '⚙️' }, // ⚙️ Settings
+  { name: 'Settings', path: '/settings', icon: '⚙️' },
 ]
 
 const isActive = (path) => route.path === path
 </script>
 
 <template>
-  <nav :class="['sidebar', { collapsed: !isOpen }]">
-    <!-- Hamburger -->
-    <button class="hamburger" @click="toggleSidebar">
-      ☰
-    </button>
+  <!-- Floating Hamburger Button -->
+  <button class="hamburger-button" @click="toggleMenu">☰</button>
 
-    <!-- Night Mode -->
-    <button class="night-mode-btn" @click="toggleNightMode">
-      <span class="icon">🌙</span>
-      <span v-if="isOpen">Night Mode</span>
-    </button>
+  <!-- Overlay Backdrop -->
+  <div v-if="isOpen" class="menu-backdrop" @click="isOpen = false"></div>
 
-    <h2 v-if="isOpen" class="sidebar-title">Pharmacy POS</h2>
+  <!-- Drawer Menu -->
+  <nav :class="['menu-drawer', { open: isOpen }]">
+    <div class="menu-header">
+      <h2>Pharmacy POS</h2>
+      <button class="close-btn" @click="toggleMenu">✕</button>
+    </div>
 
-    <ul>
+    <ul class="menu-list">
       <li v-for="item in menuItems" :key="item.path">
         <button
           :class="{ active: isActive(item.path) }"
-          @click="router.push(item.path)"
+          @click="navigateTo(item.path)"
         >
           <span class="icon">{{ item.icon }}</span>
-          <span v-if="isOpen">{{ item.name }}</span>
+          <span>{{ item.name }}</span>
         </button>
       </li>
     </ul>
+
+    <button class="night-mode-btn" @click="toggleNightMode">
+      <span class="icon">🌙</span>
+      <span>Night Mode</span>
+    </button>
   </nav>
 </template>
 
 <style scoped>
-/* SIDEBAR */
-.sidebar {
-  position: fixed;  
-  width: 220px;
-  min-width: 220px;
+/* Floating Hamburger Button */
+.hamburger-button {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 1000;
+  background: #1abc9c;
+  border: none;
+  color: white;
+  font-size: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.hamburger-button:hover {
+  background: #16a085;
+}
+
+/* Menu Backdrop (overlay) */
+.menu-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+/* Drawer Menu */
+.menu-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 280px;
   height: 100vh;
   background: #2d3e50;
   color: #fff;
   display: flex;
   flex-direction: column;
   padding: 16px;
-  transition: width 0.25s ease;
+  z-index: 1001;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
 }
 
-/* COLLAPSED */
-.sidebar.collapsed {
-  width: 40px;
-  min-width: 40px;
+.menu-drawer.open {
+  transform: translateX(0);
 }
 
+/* Menu Header */
+.menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #3b4c60;
+}
 
-/* HAMBURGER */
-.hamburger {
-  background: #1abc9c;
-  border: none;
-  color: white;
+.menu-header h2 {
+  margin: 0;
   font-size: 18px;
-  padding: 8px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  background: #3b4c60;
+  border-radius: 6px;
+}
+
+/* Menu List */
+.menu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-list button {
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 15px;
+  transition: background 0.2s;
+}
+
+.menu-list button:hover {
+  background: #3b4c60;
+}
+
+.menu-list button.active {
+  background: #1abc9c;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Night Mode Button */
+.night-mode-btn {
+  background: #34495e;
+  border: none;
+  color: #fff;
+  padding: 12px;
   border-radius: 6px;
   cursor: pointer;
-  margin-bottom: 12px;
-}
-
-
-.sidebar.collapsed button {
   display: flex;
-  justify-content: center;
+  gap: 12px;
   align-items: center;
-}
-
-/* NIGHT MODE BUTTON */
-.night-mode-btn {
-  margin-bottom: 12px;
-  background: #34495e;
+  font-size: 15px;
+  width: 100%;
+  margin-top: auto;
+  transition: background 0.2s;
 }
 
 .night-mode-btn:hover {
@@ -140,59 +238,27 @@ body.dark-mode .night-mode-btn:hover {
   background: #ffb300;
 }
 
-/* TITLE */
-.sidebar-title {
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-/* MENU */
-ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  flex: 1;
-}
-
-button {
-  width: 100%;
-  background: none;
-  border: none;
-  color: inherit;
-  padding: 10px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
-button:hover {
-  background: #3b4c60;
-}
-
-button.active {
-  background: #1abc9c;
-  color: #fff;
-}
-
-/* ICON */
+/* Icon */
 .icon {
-  width: 24px;
+  font-size: 18px;
+  min-width: 24px;
   text-align: center;
 }
 
-/* DARK MODE */
-body.dark-mode {
-  background: #121212;
-  color: #eee;
-}
-
-body.dark-mode .sidebar {
+/* Dark Mode */
+body.dark-mode .menu-drawer {
   background: #1e1e1e;
 }
 
-body.dark-mode button:hover {
-  background: #333;
+body.dark-mode .menu-header {
+  border-bottom-color: #333;
+}
+
+body.dark-mode .hamburger-button {
+  background: #1abc9c;
+}
+
+body.dark-mode .hamburger-button:hover {
+  background: #16a085;
 }
 </style>

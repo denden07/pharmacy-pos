@@ -1,6 +1,6 @@
 <template>
   <div class="app-container">
-    <Sidebar @toggle="onSidebarToggle" />
+    <Sidebar />
     <main class="main-content">
       <router-view />
     </main>
@@ -8,23 +8,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
 import Sidebar from '../src/components/Sidebar.vue'
-
-const sidebarWidth = ref(220)
-
-const onSidebarToggle = (isOpen) => {
-  sidebarWidth.value = isOpen ? 260 : 70
-  document.documentElement.style.setProperty(
-    '--sidebar-width',
-    sidebarWidth.value + 'px'
-  )
-}
 </script>
 
 <style>
 :root {
-  --sidebar-width: 260px;
+  --sidebar-width: 0;
 }
 </style>
 
@@ -33,13 +22,11 @@ const onSidebarToggle = (isOpen) => {
   width: 100%;
 }
 
-/* THIS is the key fix */
+/* Main content takes full width */
 .main-content {
-  margin-left: var(--sidebar-width);
-  width: calc(100% - var(--sidebar-width));
+  width: 100%;
   min-height: 100vh;
   padding: 16px;
-  transition: margin-left 0.25s ease, width 0.25s ease;
   box-sizing: border-box;
 }
 </style>
