@@ -278,9 +278,9 @@ const checkout = async () => {
 
   // Confirmation with detailed breakdown
   const itemsTable = `
-    <div style="max-height: 40vh; overflow-y: scroll; margin: 16px 0; border: 1px solid #ddd; border-radius: 4px;">
+    <div style="max-height: 40vh; overflow-y: auto; margin: 16px 0; border: 1px solid #ddd; border-radius: 4px;">
       <table style="width:100%; border-collapse: collapse; text-align: left;">
-        <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 1;">
+        <thead style="position: sticky; top: 0; background: #f5f5f5; z-index: 10;">
           <tr style="border-bottom: 2px solid #ddd;">
             <th style="padding: 8px;">Medicine</th>
             <th style="padding: 8px; text-align: center;">Qty</th>
@@ -453,74 +453,73 @@ const getStockIndicator = (med) => {
 <template>
 <h1 style="font-size: 32px;">Calculator</h1>
 
-<!-- SEARCH BAR + CUSTOMER BUTTON -->
-<div class="search-bar">
-  <input class="input pos-medicine-search" v-model="search" placeholder="Search medicine..." />
-  <button class="btn select-customer" @click="showCustomerModal=true">Select Customer</button>
+<!-- SEARCH BAR + CUSTOMER + REDEEM (ALL INLINE) -->
+<div class="top-controls">
+  <div class="search-section">
+    <input class="input pos-medicine-search" v-model="search" placeholder="Search medicine..." />
+    
+    <!-- Dropdown -->
+    <div v-if="search && filteredMedicines.length" class="dropdown">
+      <div v-for="med in filteredMedicines" :key="med.id" class="dropdown-item" @click="addToCart(med)">
+        <div class="dropdown-item-content">
+          <div>
+            <div class="med-name">{{ med.name }}</div>
+            <div class="med-generic" v-if="med.generic_name">{{ med.generic_name }}</div>
+          </div>
 
-  <!-- Dropdown -->
-<div v-if="search && filteredMedicines.length" class="dropdown">
-  <div v-for="med in filteredMedicines" :key="med.id" class="dropdown-item" @click="addToCart(med)">
-    <div class="dropdown-item-content">
-      <div>
-        <div class="med-name">{{ med.name }}</div>
-        <div class="med-generic" v-if="med.generic_name">{{ med.generic_name }}</div>
-      </div>
-
-      <!-- Stock indicator -->
-      <div 
-        class="stock-indicator" 
-        :title="med.stockIndicator.text"
-        :class="{
-          'out-of-stock': med.quantity <= 0,
-          'low-stock': med.quantity > 0 && med.quantity < 10,
-          'normal-stock': med.quantity >= 10
-        }"
-      >
-        <!-- <span>{{ med.stockIndicator.icon }}</span> -->
-        <span>Remaining QTY:  {{ med.quantity }}</span>
+          <!-- Stock indicator -->
+          <div 
+            class="stock-indicator" 
+            :title="med.stockIndicator.text"
+            :class="{
+              'out-of-stock': med.quantity <= 0,
+              'low-stock': med.quantity > 0 && med.quantity < 10,
+              'normal-stock': med.quantity >= 10
+            }"
+          >
+            <span>Remaining QTY: {{ med.quantity }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
+
+      <div class="sold-to">
+        <!-- CUSTOMER SECTION + REDEEM (inline together) -->
+        <div class="customer-section">
+          <label><strong>Sold to:</strong></label>
+          <div class="customer-display">
+            <span v-if="selectedCustomer" class="customer-name">
+              👤 {{ selectedCustomer.name }} 
+            </span>
+            <button v-if="!selectedCustomer" class="btn select-customer" @click="showCustomerModal=true">
+              Select Customer
+            </button>
+            <button style="margin-left: 8px" v-if="selectedCustomer" class="mini danger" @click="selectedCustomer=null">✕</button>
+          </div>
+
+          <!-- REDEEM BUTTONS (inline in same section) -->
+          <div v-if="selectedCustomer" class="redeem-section">
+            <button 
+              v-if="!pointsConfirmed" 
+              class="mini regular" 
+              @click="openRedeemModal"
+            >
+              🎁 Redeem
+            </button>
+
+            <button 
+              v-if="pointsConfirmed" 
+              class="mini danger" 
+              @click="removePoints"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+    </div>
 
 
-</div>
-
-<!-- Selected Customer Badge + Redeem Buttons -->
-<div style="display: flex;
-    align-items: center;
-    gap: 6px;
-    width: 100%;
-    justify-content: center;
-    margin-bottom: 16px;">
-  <div style="display:flex;align-items:center;gap:10px;">
-    <strong>Sold to:</strong> 
-    <span v-if="selectedCustomer" class="selected-customer">
-      👤 {{ selectedCustomer.name }}
-      <small v-if="selectedCustomer.address">({{ selectedCustomer.address }})</small>
-    </span>
-    <button v-if="selectedCustomer" class="mini danger" @click="selectedCustomer=null">✕</button>
-  </div>
-
-  <!-- Redeem / Remove Points -->
-  <div v-if="selectedCustomer" style="display:flex; gap:4px;">
-    <button 
-      v-if="!pointsConfirmed" 
-      class="mini regular" 
-      @click="openRedeemModal"
-    >
-      🎁 Redeem Points
-    </button>
-
-    <button 
-      v-if="pointsConfirmed" 
-      class="mini danger" 
-      @click="removePoints"
-    >
-      Remove Points
-    </button>
-  </div>
 </div>
 
 
@@ -543,7 +542,7 @@ const getStockIndicator = (med) => {
           <tr v-for="item in cart" :key="item.id">
             <td>
               <div class="med-name-table">{{ item.name }}</div>
-              <div class="med-generic" v-if="item.generic_name">{{ item.generic_name }}</div>
+              <!-- <div class="med-generic" v-if="item.generic_name">{{ item.generic_name }}</div> -->
             </td>
             <td>
 <div class="price-toggle">
@@ -738,16 +737,75 @@ const getStockIndicator = (med) => {
 
 <style scoped>
   /* =========================
-   SEARCH BAR
+   TOP CONTROLS (INLINE)
 ========================= */
-.search-bar {
+.top-controls {
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.search-section {
+  flex: 1;
+  min-width: 250px;
   position: relative;
 }
-.input.pos-medicine-search {
+
+.customer-section {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  /* background: #f9f9f9; */
+  border-radius: 8px;
   flex: 1;
+  min-width: 300px;
+  justify-content: flex-end;
+}
+
+.customer-section label {
+  font-size: 18px;
+  white-space: nowrap;
+  margin: 0;
+  font-weight: 600;
+}
+
+.customer-display {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.customer-name {
+  font-size: 18px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.customer-name .separator {
+  margin: 0 8px;
+  color: #bbb;
+}
+
+.redeem-section {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+
+  /* =========================
+   SEARCH BAR
+========================= */
+.input.pos-medicine-search {
+  width: 70%;
   height: 44px;
   padding: 0 12px;
   border-radius: 8px;
@@ -755,6 +813,7 @@ const getStockIndicator = (med) => {
   font-size: 15px;
   background: #fff;
   color: #222;
+  display:block;
 }
 .btn.select-customer {
   background: #3498db;
@@ -764,6 +823,7 @@ const getStockIndicator = (med) => {
   height: 44px;
   padding: 0 14px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Dropdown */
@@ -771,7 +831,7 @@ const getStockIndicator = (med) => {
   position: absolute;
   top: 46px;
   left: 0;
-  width: 100%;
+  width: 70%;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 8px;
@@ -902,14 +962,16 @@ th, td {
   font-weight: 600;
 }
 .right-panel input {
-  height: 40px;
+  height: 55px;
   border-radius: 6px;
   border: 1px solid #ccc;
   padding: 0 10px;
   font-size: 14px;
   background: #fff;
   color: #222;
+  font-size: 18px
 }
+
 .right-panel input:focus {
   outline: 2px solid #3498db;
 }
@@ -939,7 +1001,7 @@ th, td {
   background: #28a745;
   color: #fff;
   border-radius: 8px;
-  height: 38px;
+  height: 40px;
 }
 
 /* =========================
