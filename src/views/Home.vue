@@ -341,7 +341,7 @@ const checkout = async () => {
     showCancelButton: true,
     confirmButtonText: 'Yes, Save Sale',
     cancelButtonText: 'Cancel',
-    width: '90%',
+    width: '96%',
     heightAuto: true,
     allowOutsideClick: false,
     customClass: {
@@ -451,10 +451,11 @@ const getStockIndicator = (med) => {
 </script>
 
 <template>
-<h1 style="font-size: 32px;">Calculator</h1>
+<div class="home-view">
+  <h1 style="font-size: 32px;">Calculator</h1>
 
-<!-- SEARCH BAR + CUSTOMER + REDEEM (ALL INLINE) -->
-<div class="top-controls">
+  <!-- SEARCH BAR + CUSTOMER + REDEEM (ALL INLINE) -->
+  <div class="top-controls">
   <div class="search-section">
     <input class="input pos-medicine-search" v-model="search" placeholder="Search medicine..." />
     
@@ -467,7 +468,6 @@ const getStockIndicator = (med) => {
             <div class="med-generic" v-if="med.generic_name">{{ med.generic_name }}</div>
           </div>
 
-          <!-- Stock indicator -->
           <div 
             class="stock-indicator" 
             :title="med.stockIndicator.text"
@@ -636,17 +636,17 @@ const getStockIndicator = (med) => {
       />
     </label>
 
-    <!-- Number Pad -->
+    <!-- Number Pad (reordered: 7-9 top, 1-3 bottom) -->
     <div class="number-pad">
-      <button class="num-btn" @click="appendNumber(1)">1</button>
-      <button class="num-btn" @click="appendNumber(2)">2</button>
-      <button class="num-btn" @click="appendNumber(3)">3</button>
-      <button class="num-btn" @click="appendNumber(4)">4</button>
-      <button class="num-btn" @click="appendNumber(5)">5</button>
-      <button class="num-btn" @click="appendNumber(6)">6</button>
       <button class="num-btn" @click="appendNumber(7)">7</button>
       <button class="num-btn" @click="appendNumber(8)">8</button>
       <button class="num-btn" @click="appendNumber(9)">9</button>
+      <button class="num-btn" @click="appendNumber(4)">4</button>
+      <button class="num-btn" @click="appendNumber(5)">5</button>
+      <button class="num-btn" @click="appendNumber(6)">6</button>
+      <button class="num-btn" @click="appendNumber(1)">1</button>
+      <button class="num-btn" @click="appendNumber(2)">2</button>
+      <button class="num-btn" @click="appendNumber(3)">3</button>
       <button class="num-btn" @click="clearInput">C</button>
       <button class="num-btn" @click="appendNumber(0)">0</button>
       <button class="num-btn" @click="backspace">←</button>
@@ -733,9 +733,57 @@ const getStockIndicator = (med) => {
     </div>
   </div>
 </div>
+</div>
 </template>
 
 <style scoped>
+/* Ensure Home view fills viewport and layouts use flex so no extra space remains */
+.home-view {
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 12px 0; /* keep existing spacing from app */
+}
+
+/* Make main content stretch to fill remaining space under the top controls */
+.home-view > .pos-layout {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 14px;
+  overflow: hidden;
+  align-items: stretch; /* ensure children stretch to full available height */
+}
+
+/* Keep top controls fixed height and not stretching */
+.home-view > .top-controls {
+  flex: 0 0 auto;
+}
+
+/* Ensure cart-wrapper stretches vertically inside pos-layout */
+.home-view .cart-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Make table container scroll within available space */
+.home-view .cart-table-container {
+  flex: 1 1 auto;
+  min-height: 0; /* allow proper flexbox scrolling */
+  overflow-y: auto;
+}
+
+/* Right panel should not stretch taller than the view */
+.home-view .right-panel {
+  /* flex: 0 0 220px; */
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
   /* =========================
    TOP CONTROLS (INLINE)
 ========================= */
@@ -872,10 +920,10 @@ const getStockIndicator = (med) => {
 
 /* Scrollable table container with max 5 rows visible */
 .cart-table-container {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 10px;
-  max-height: calc(5 * 48px + 40px); /* 5 rows + header */
+  min-height: 0;
 }
 
 /* Optional scroll indicator styling */
@@ -946,14 +994,20 @@ th, td {
    RIGHT PANEL
 ========================= */
 .right-panel {
-  width: 200px;
+  /* responsive width: prioritize a compact column on small screens, scale on larger */
+  width: clamp(220px, 22vw, 420px);
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   background: #f9f9f9;
   border: 1px solid #ccc;
   border-radius: 10px;
-  padding: 10px;
+  padding: 12px;
+  /* allow the panel to fill vertical space but keep inputs and controls visible */
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .right-panel label {
   display: flex;
@@ -962,18 +1016,39 @@ th, td {
   font-weight: 600;
 }
 .right-panel input {
-  height: 55px;
+  /* Inputs enlarged by default for better visibility */
+  flex: 0 0 auto;
+  width: 100%;
+  height: clamp(52px, 6.5vw, 76px) !important;
   border-radius: 6px;
   border: 1px solid #ccc;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: clamp(16px, 2.4vw, 24px);
   background: #fff;
   color: #222;
-  font-size: 18px
+  box-sizing: border-box;
 }
 
 .right-panel input:focus {
   outline: 2px solid #3498db;
+}
+
+/* Emphasize inputs when active (clicked via numpad) to improve tap target on Android */
+.right-panel input {
+  transition: all 160ms ease-in-out;
+}
+.right-panel input.active-input,
+.right-panel input:active {
+  border-color: #2b6cb0;
+  box-shadow: 0 8px 18px rgba(43,108,176,0.12);
+}
+
+/* Smaller screens: ensure active input doesn't push layout too much but still prominent */
+@media (max-width: 480px) {
+  .right-panel input.active-input {
+    height: clamp(48px, 9vw, 64px) !important;
+    font-size: clamp(16px, 3.6vw, 22px);
+  }
 }
 
 /* =========================
@@ -981,17 +1056,67 @@ th, td {
 ========================= */
 .number-pad {
   display: grid;
-  grid-template-columns: repeat(3,1fr);
-  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+  justify-items: stretch;
+  /* number-pad takes available space after inputs; it should grow but stay scrollable if necessary */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+  grid-auto-rows: minmax(48px, 1fr);
 }
 .num-btn {
-  height: 50px;
-  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 8px;
   border: none;
   background: #3498db;
   color: #fff;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: clamp(14px, 2.4vw, 28px);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Larger, full-screen friendly number pad for wide/tall screens */
+@media (min-width: 900px) and (min-height: 700px) {
+  .home-view .right-panel {
+    width: 320px;
+  }
+  .home-view .num-btn {
+    font-size: 20px;
+    border-radius: 10px;
+  }
+}
+
+/* On very large tablets or desktop-like screens, make pad visually larger and easier to tap */
+@media (min-width: 1200px) {
+  .home-view .right-panel {
+    width: 380px;
+  }
+  .home-view .num-btn {
+    font-size: 22px;
+  }
+}
+/* Very tall screens: increase right-panel and scale number pad rows to fill height */
+@media (min-height: 1400px) {
+  .home-view .right-panel {
+    width: 420px;
+  }
+  .home-view .number-pad {
+    grid-auto-rows: minmax(64px, 1fr);
+  }
+  .home-view .num-btn {
+    font-size: 26px;
+  }
 }
 .num-btn:active {
   transform: scale(0.95);
@@ -1001,7 +1126,9 @@ th, td {
   background: #28a745;
   color: #fff;
   border-radius: 8px;
-  height: 40px;
+  height: clamp(38px, 5.5vw, 52px) !important;
+  font-size: clamp(14px, 2.5vw, 18px);
+  padding: 8px 12px;
 }
 
 /* =========================
@@ -1021,6 +1148,11 @@ th, td {
   border: 1px solid #ccc;
   background: #fff;
   color: #222;
+  transition: all 160ms ease-in-out;
+}
+.qty-wrapper input.active-input {
+  border: 2px solid #2b6cb0;
+  box-shadow: 0 4px 12px rgba(43,108,176,0.15);
 }
 .qty-wrapper button {
   width: 26px;
@@ -1277,23 +1409,125 @@ th, td {
 
 .payment-toggle {
   display: flex;
-  gap: 6px;
-  height: auto !important;
+  gap: 12px; /* visible separator between buttons */
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
 }
 .payment-toggle button {
-  flex: 1;
-  height: 34px;
+  /* Let both buttons share available width with a gap */
+  flex: 1 1 0;
+  min-width: 0; /* allow shrinking */
+  height: clamp(36px, 4.5vw, 56px) !important;
   border-radius: 6px;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
   background: #ccc;
   color: #222;
-    height: auto !important;
+  padding: 8px 12px;
+  font-size: clamp(14px, 2.4vw, 18px);
+  box-sizing: border-box;
 }
 .payment-toggle button.active {
   background: #28a745;
   color: #fff;
 }
+
+/* Make number pad buttons and payment buttons adapt on narrow screens */
+@media (max-width: 900px) {
+  .num-btn { font-size: clamp(14px, 5vw, 22px); border-radius: 10px; }
+  .number-pad { gap: 8px; }
+  .payment-toggle button { font-size: clamp(13px,2.8vw,16px); padding: 6px 8px; height: clamp(32px,4.5vw,44px) !important; }
+  .right-panel input { height: clamp(40px, 6vw, 56px) !important; }
+  .btn.checkout { height: clamp(36px, 5.5vw, 48px)  !important; }
+}
+
+@media (max-width: 480px) {
+  .num-btn { font-size: clamp(12px, 6.5vw, 20px); border-radius: 8px; }
+  .number-pad { gap: 6px; }
+  .payment-toggle { gap: 4px; }
+  .payment-toggle button { font-size: clamp(12px,3.6vw,14px); padding: 6px 8px; height: clamp(30px,6.5vw,40px)  !important; }
+  .right-panel input { height: clamp(36px, 8vw, 48px)  !important; font-size: clamp(14px, 3.6vw, 16px); }
+  .btn.checkout { height: clamp(34px, 6.5vw, 44px) !important; font-size: clamp(13px, 3.2vw, 16px); }
+}
+
+/* Smaller tablets: avoid vertical overflow by reducing element heights and removing numpad scroll */
+@media (min-width: 600px) and (max-width: 1024px) {
+  .right-panel {
+    width: clamp(260px, 28vw, 360px);
+    padding: 10px;
+  }
+
+  .right-panel input {
+    height: clamp(38px, 3.8vw, 48px)  !important;
+    font-size: clamp(14px, 1.8vw, 18px);
+  }
+
+  /* Make numpad rows a bit tighter and ensure it fits without scrolling */
+  .number-pad {
+    grid-auto-rows: 44px;
+    gap: 6px;
+    max-height: calc(100% - 160px);
+    overflow: visible;
+  }
+
+  .num-btn {
+    font-size: clamp(14px, 2.2vw, 20px);
+    border-radius: 8px;
+  }
+
+  .payment-toggle button {
+    height: clamp(34px, 3.2vw, 44px)  !important;
+    font-size: clamp(13px, 1.8vw, 16px);
+    padding: 6px 10px;
+  }
+
+  .btn.checkout {
+    height: clamp(36px, 3.6vw, 44px)  !important;
+    font-size: clamp(14px, 1.8vw, 16px);
+  }
+}
+
+/* Large screen: increase prominence of payment buttons and inputs */
+@media (min-width: 1200px) {
+  .right-panel { width: clamp(320px, 18vw, 520px); }
+  .num-btn { font-size: clamp(18px, 1.4vw, 34px); }
+  .payment-toggle button { max-width: 220px; font-size: clamp(16px,1.6vw,20px); height: clamp(40px,2.6vw,64px) !important; }
+  .right-panel input { height: clamp(45px, 2.4vw, 72px)  !important; font-size: clamp(16px,1.6vw,22px); }
+  .btn.checkout { height: clamp(44px, 2.6vw, 64px)  !important; font-size: clamp(16px,1.6vw,22px); }
+}
+
+  /* High-density landscape devices (e.g. Android 240dpi landscape):
+     increase input prominence and reduce numpad scaling so inputs don't look small */
+  @media (orientation: landscape) and (min-resolution: 2dppx) {
+    .right-panel {
+      width: clamp(300px, 22vw, 520px);
+    }
+
+    .right-panel input {
+      height: clamp(64px, 6.5vh, 100px) !important;
+      font-size: clamp(18px, 2.8vh, 28px) !important;
+      padding: 8px 12px !important;
+    }
+
+    /* Scale back numpad font so inputs are visually comparable */
+    .num-btn {
+      font-size: clamp(14px, 1.8vw, 20px) !important;
+      padding: 0 !important;
+    }
+
+    .right-panel input.active-input,
+    .right-panel input:active {
+      height: clamp(76px, 8.5vh, 120px) !important;
+      font-size: clamp(20px, 3.6vh, 34px) !important;
+    }
+
+    .payment-toggle button {
+      height: clamp(44px, 4.5vh, 64px) !important;
+      font-size: clamp(16px, 2.4vh, 20px) !important;
+    }
+  }
 
 .dropdown-item-content {
   display: flex;
@@ -1330,6 +1564,9 @@ th, td {
 
 /* SweetAlert modal tweaks for small screens/tablets */
 .swal-wide {
+  /* wider popup but constrained to a sensible max width */
+  width: 96% !important;
+  max-width: 1100px !important;
   max-height: calc(100vh - 32px) !important;
   overflow-y: auto !important;
   box-sizing: border-box !important;
@@ -1343,8 +1580,98 @@ th, td {
   padding-top: 8px !important;
 }
 .swal-wide .swal2-content {
-  /* ensure content can scroll independently if needed */
-  overflow: visible !important;
+  /* allow horizontal scrolling for wide tables/content inside the popup */
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+.swal-wide table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Ensure table can grow horizontally if needed and be scrolled */
+  min-width: 640px;
+}
+
+/* Responsive improvements for tablets and phones */
+@media (max-width: 900px) {
+  .home-view {
+    padding: 8px 6px;
+  }
+
+  /* Stack top controls vertically and make inputs full width */
+  .top-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .search-section {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .input.pos-medicine-search {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dropdown {
+    width: 100%;
+    left: 0;
+    right: 0;
+  }
+
+  .customer-section {
+    flex: none;
+    width: 100%;
+    justify-content: space-between;
+    padding: 8px;
+  }
+
+  /* Make main layout stack: cart on top, controls below to be thumb-friendly */
+  .pos-layout {
+    flex-direction: column-reverse;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .cart-wrapper { order: 1; width: 100%; }
+  .right-panel { order: 2; width: 100%; height: auto; max-height: none; overflow: visible; }
+
+  /* Right panel becomes horizontally flexible and wraps its controls */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .right-panel label { width: 100%; }
+
+  .number-pad {
+    grid-auto-rows: 56px;
+    flex: none;
+  }
+
+  .cart-totals {
+    grid-template-columns: 1fr;
+    text-align: left;
+    gap: 6px 0;
+  }
+
+  .cart-totals div { flex-direction: row; justify-content: space-between; align-items: center; }
+}
+
+@media (max-width: 480px) {
+  /* Tighten spacing on small phones */
+  .input.pos-medicine-search { height: 40px; font-size: 14px; }
+  .customer-name { font-size: 16px; }
+  .right-panel input { height: 44px; font-size: 16px; }
+  .qty-wrapper input { width: 44px; height: 34px; }
+  .number-pad { grid-auto-rows: 48px; }
+  .num-btn { font-size: 18px; }
+  table th, table td { padding: 6px; }
+  .cart-totals strong { font-size: 18px; }
 }
 
 </style>

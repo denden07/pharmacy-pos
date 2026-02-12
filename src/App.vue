@@ -26,7 +26,7 @@ import Sidebar from '../src/components/Sidebar.vue'
 .main-content {
   width: 100%;
   min-height: 100vh;
-  padding: 16px;
+  padding: 0 16px;
   box-sizing: border-box;
 }
 </style>
