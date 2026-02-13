@@ -29,12 +29,18 @@ const redeemMultiplier = ref(1)
 const pointsConfirmed = ref(false)
 
 // ======================
+// SPECIAL DISCOUNT
+// ======================
+const showSpecialDiscountModal = ref(false)
+const specialDiscount = ref(0)
+
+// ======================
 // CUSTOMER MODAL
 // ======================
 const showNewCustomerForm = ref(false)
 
 const pointsUsed = computed(() => pointsConfirmed.value ? customerPoints.value * redeemMultiplier.value : 0)
-const pointsDiscount = computed(() => pointsUsed.value)
+const pointsDiscount = computed(() => pointsUsed.value + specialDiscount.value)
 
 // ======================
 // Focus tracking for number pad
@@ -241,6 +247,21 @@ const removePoints = () => {
 }
 
 // ======================
+// SPECIAL DISCOUNT
+// ======================
+const openSpecialDiscountModal = () => {
+  showSpecialDiscountModal.value = true
+}
+
+const applySpecialDiscount = () => {
+  showSpecialDiscountModal.value = false
+}
+
+const removeSpecialDiscount = () => {
+  specialDiscount.value = 0
+}
+
+// ======================
 // CHECKOUT & SAVE SALE
 // ======================
 const checkout = async () => {
@@ -322,6 +343,18 @@ const checkout = async () => {
           <span>Discount:</span>
           <span>-₱${pointsDiscount.value.toFixed(2)}</span>
         </div>
+        ${pointsUsed.value > 0 ? `
+          <div style="display: flex; justify-content: space-between; padding: 2px 0 2px 16px; font-size: 13px; color: #718096;">
+            <span>• Points:</span>
+            <span>-₱${pointsUsed.value.toFixed(2)}</span>
+          </div>
+        ` : ''}
+        ${specialDiscount.value > 0 ? `
+          <div style="display: flex; justify-content: space-between; padding: 2px 0 2px 16px; font-size: 13px; color: #718096;">
+            <span>• Special:</span>
+            <span>-₱${specialDiscount.value.toFixed(2)}</span>
+          </div>
+        ` : ''}
       ` : ''}
       <div style="display: flex; justify-content: space-between; padding: 4px 0;">
         <span>Money Given:</span>
@@ -391,6 +424,7 @@ const checkout = async () => {
     customerPoints.value = 0
     redeemMultiplier.value = 1
     pointsConfirmed.value = false
+    specialDiscount.value = 0
 
   } catch (err) {
     console.error(err)
@@ -600,7 +634,14 @@ const getStockIndicator = (med) => {
       </div>
 
       <div>
-        <span>Discount</span>
+        <span style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+          Discount
+          <button 
+            class="discount-add-btn" 
+            @click="openSpecialDiscountModal"
+            title="Add special discount"
+          >+</button>
+        </span>
         <strong>-₱{{ pointsDiscount }}</strong>
       </div>
 
@@ -741,6 +782,54 @@ const getStockIndicator = (med) => {
     <div class="modal-actions">
       <button class="btn checkout" @click="confirmPoints">Apply</button>
       <button class="btn danger" @click="showRedeemModal=false">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SPECIAL DISCOUNT MODAL -->
+<div v-if="showSpecialDiscountModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Special Discount</h3>
+    
+    <div v-if="pointsUsed > 0" style="padding: 10px; background: #e6f7ff; border-radius: 6px; margin-bottom: 10px;">
+      <small>Redeemed Points Discount: <strong>₱{{ pointsUsed }}</strong></small>
+    </div>
+
+    <label style="font-weight: 600; margin-bottom: 8px;">Additional Discount Amount:</label>
+    <input 
+      type="number" 
+      v-model.number="specialDiscount" 
+      placeholder="Enter discount amount"
+      min="0"
+      step="0.01"
+      style="margin-bottom: 12px;"
+    />
+
+    <div v-if="specialDiscount > 0" style="padding: 10px; background: #fff3cd; border-radius: 6px; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span>Points Discount:</span>
+        <strong>₱{{ pointsUsed }}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span>Special Discount:</span>
+        <strong>₱{{ specialDiscount }}</strong>
+      </div>
+      <hr style="margin: 8px 0; border: none; border-top: 1px solid #ddd;" />
+      <div style="display: flex; justify-content: space-between; font-size: 18px;">
+        <span><strong>Total Discount:</strong></span>
+        <strong style="color: #e74c3c;">₱{{ pointsUsed + specialDiscount }}</strong>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn checkout" @click="applySpecialDiscount">Apply</button>
+      <button 
+        v-if="specialDiscount > 0" 
+        class="btn danger" 
+        @click="removeSpecialDiscount(); showSpecialDiscountModal = false"
+        style="flex: 0.8;"
+      >Remove</button>
+      <button class="btn" @click="showSpecialDiscountModal=false" style="background: #6c757d; color: white;">Cancel</button>
     </div>
   </div>
 </div>
@@ -1271,6 +1360,36 @@ th, td {
   border-bottom: 1px solid #ddd;
 }
 .customer-row:hover { background: #f0f8ff; }
+
+/* =========================
+   DISCOUNT ADD BUTTON
+========================= */
+.discount-add-btn {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  border: none;
+  background: #3498db;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.discount-add-btn:hover {
+  background: #2980b9;
+  transform: scale(1.15);
+}
+
+.discount-add-btn:active {
+  transform: scale(0.9);
+}
 
 /* =========================
    MED NAMES
