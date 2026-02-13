@@ -662,14 +662,14 @@ const getStockIndicator = (med) => {
         :class="{ active: paymentMethod === 'cash' }"
         @click="paymentMethod = 'cash'"
       >
-        💵 Cash
+        Cash
       </button>
 
       <button
         :class="{ active: paymentMethod === 'gcash' }"
         @click="paymentMethod = 'gcash'"
       >
-        📱 GCash
+        GCash
       </button>
     </div>
 
@@ -1027,17 +1027,19 @@ th, td {
   font-weight: 600;
 }
 .right-panel input {
-  /* Inputs enlarged by default for better visibility */
   flex: 0 0 auto;
   width: 100%;
-  height: clamp(52px, 6.5vw, 76px) !important;
+  min-height: 2.2rem;
+  max-height: 3.2rem;
+  height: 2.6rem;
   border-radius: 6px;
   border: 1px solid #ccc;
   padding: 0 10px;
-  font-size: clamp(16px, 2.4vw, 24px);
+  font-size: 1.1rem;
   background: #fff;
   color: #222;
   box-sizing: border-box;
+  transition: height 0.2s, font-size 0.2s;
 }
 
 .right-panel input:focus {
@@ -1056,10 +1058,7 @@ th, td {
 
 /* Smaller screens: ensure active input doesn't push layout too much but still prominent */
 @media (max-width: 480px) {
-  .right-panel input.active-input {
-    height: clamp(48px, 9vw, 64px) !important;
-    font-size: clamp(16px, 3.6vw, 22px);
-  }
+  /* No height/font-size adjustment for .active-input */
 }
 
 /* =========================
@@ -1076,7 +1075,7 @@ th, td {
   min-height: 0;
   max-height: 100%;
   overflow: auto;
-  grid-auto-rows: minmax(48px, 1fr);
+  /* grid-auto-rows: minmax(48px, 1fr); */
 }
 .num-btn {
   width: 100%;
@@ -1137,9 +1136,12 @@ th, td {
   background: #28a745;
   color: #fff;
   border-radius: 8px;
-  height: clamp(38px, 5.5vw, 52px) !important;
-  font-size: clamp(14px, 2.5vw, 18px);
+  min-height: 2.1rem;
+  max-height: 2.8rem;
+  height: 2.4rem;
+  font-size: 1.05rem;
   padding: 8px 12px;
+  transition: height 0.2s, font-size 0.2s;
 }
 
 /* =========================
@@ -1447,20 +1449,20 @@ th, td {
 
 /* Make number pad buttons and payment buttons adapt on narrow screens */
 @media (max-width: 900px) {
-  .num-btn { font-size: clamp(14px, 5vw, 22px); border-radius: 10px; }
+  .num-btn { font-size: 1.1rem; border-radius: 10px; }
   .number-pad { gap: 8px; }
-  .payment-toggle button { font-size: clamp(13px,2.8vw,16px); padding: 6px 8px; height: clamp(32px,4.5vw,44px) !important; }
-  .right-panel input { height: clamp(40px, 6vw, 56px) !important; }
-  .btn.checkout { height: clamp(36px, 5.5vw, 48px)  !important; }
+  .payment-toggle button { font-size: 0.95rem; padding: 6px 8px; height: 2rem !important; }
+  .right-panel input { min-height: 2rem; max-height: 2.7rem; height: 2.2rem; font-size: 1rem; }
+  .btn.checkout { min-height: 1.8rem; max-height: 2.4rem; height: 2rem; font-size: 0.95rem; }
 }
 
 @media (max-width: 480px) {
-  .num-btn { font-size: clamp(12px, 6.5vw, 20px); border-radius: 8px; }
+  .num-btn { font-size: 0.95rem; border-radius: 8px; }
   .number-pad { gap: 6px; }
   .payment-toggle { gap: 4px; }
-  .payment-toggle button { font-size: clamp(12px,3.6vw,14px); padding: 6px 8px; height: clamp(30px,6.5vw,40px)  !important; }
-  .right-panel input { height: clamp(36px, 8vw, 48px)  !important; font-size: clamp(14px, 3.6vw, 16px); }
-  .btn.checkout { height: clamp(34px, 6.5vw, 44px) !important; font-size: clamp(13px, 3.2vw, 16px); }
+  .payment-toggle button { font-size: 0.85rem; padding: 6px 8px; height: 1.7rem !important; }
+  .right-panel input { min-height: 1.6rem; max-height: 2.2rem; height: 1.8rem; font-size: 0.95rem; }
+  .btn.checkout { min-height: 1.5rem; max-height: 2rem; height: 1.7rem; font-size: 0.9rem; }
 }
 
 /* Smaller tablets: avoid vertical overflow by reducing element heights and removing numpad scroll */
@@ -1502,11 +1504,11 @@ th, td {
 
 /* Large screen: increase prominence of payment buttons and inputs */
 @media (min-width: 1200px) {
-  .right-panel { width: clamp(320px, 18vw, 520px); }
-  .num-btn { font-size: clamp(18px, 1.4vw, 34px); }
-  .payment-toggle button { max-width: 220px; font-size: clamp(16px,1.6vw,20px); height: clamp(40px,2.6vw,64px) !important; }
-  .right-panel input { height: clamp(45px, 2.4vw, 72px)  !important; font-size: clamp(16px,1.6vw,22px); }
-  .btn.checkout { height: clamp(65px, 2.6vw, 64px)  !important; font-size: clamp(16px,1.6vw,22px); }
+  .right-panel { width: 420px; }
+  .num-btn { font-size: 1.3rem; }
+  .payment-toggle button { max-width: 220px; font-size: 1.1rem; height: 2.6rem !important; }
+  .right-panel input { min-height: 2.6rem; max-height: 3.6rem; height: 3rem; font-size: 1.2rem; }
+  .btn.checkout { min-height: 2.2rem; max-height: 3rem; height: 2.6rem; font-size: 1.15rem; }
 }
 
   /* High-density landscape devices (e.g. Android 240dpi landscape):
@@ -1517,7 +1519,7 @@ th, td {
     }
 
     .right-panel input {
-      height: clamp(64px, 8.5vh, 100px) !important;
+      height: clamp(55px, 6.5vh, 100px) !important;
       font-size: clamp(18px, 2.8vh, 28px) !important;
       padding: 8px 12px !important;
     }
@@ -1528,11 +1530,7 @@ th, td {
       padding: 0 !important;
     }
 
-    .right-panel input.active-input,
-    .right-panel input:active {
-      height: clamp(76px, 8.5vh, 120px) !important;
-      font-size: clamp(20px, 3.6vh, 34px) !important;
-    }
+
 
     .payment-toggle button {
       height: clamp(44px, 4.5vh, 64px) !important;
@@ -1677,7 +1675,7 @@ th, td {
   /* Tighten spacing on small phones */
   .input.pos-medicine-search { height: 40px; font-size: 14px; }
   .customer-name { font-size: 16px; }
-  .right-panel input { height: 44px; font-size: 16px; }
+  .right-panel input { height: 2.2rem; font-size: 1.05rem; }
   .qty-wrapper input { width: 44px; height: 34px; }
   .number-pad { grid-auto-rows: 48px; }
   .num-btn { font-size: 18px; }
