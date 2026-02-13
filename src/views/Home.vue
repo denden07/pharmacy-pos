@@ -28,6 +28,11 @@ const customerPoints = ref(0)
 const redeemMultiplier = ref(1)
 const pointsConfirmed = ref(false)
 
+// ======================
+// CUSTOMER MODAL
+// ======================
+const showNewCustomerForm = ref(false)
+
 const pointsUsed = computed(() => pointsConfirmed.value ? customerPoints.value * redeemMultiplier.value : 0)
 const pointsDiscount = computed(() => pointsUsed.value)
 
@@ -696,12 +701,18 @@ const getStockIndicator = (med) => {
       </div>
     </div>
 
-    <hr/>
-    <h4>Add New Customer</h4>
-    <div class="new-customer-form">
-      <label>Name<input class="input" v-model="newCustomer.name" /></label>
-      <label>Address<input class="input" v-model="newCustomer.address" /></label>
-      <label>Phone<input class="input" v-model="newCustomer.phone" /></label>
+    <button class="btn" @click="showNewCustomerForm = !showNewCustomerForm" style="margin-top: 12px; background: #3498db; color: #fff; width: 100%; box-sizing: border-box;">
+      {{ showNewCustomerForm ? '✕ Hide New Customer' : '+ Add New Customer' }}
+    </button>
+
+    <div v-if="showNewCustomerForm">
+      <hr/>
+      <h4>Add New Customer</h4>
+      <div class="new-customer-form">
+        <label>Name<input class="input" v-model="newCustomer.name" /></label>
+        <label>Address<input class="input" v-model="newCustomer.address" /></label>
+        <label>Phone<input class="input" v-model="newCustomer.phone" /></label>
+      </div>
     </div>
 
     <div class="modal-actions">
@@ -1495,7 +1506,7 @@ th, td {
   .num-btn { font-size: clamp(18px, 1.4vw, 34px); }
   .payment-toggle button { max-width: 220px; font-size: clamp(16px,1.6vw,20px); height: clamp(40px,2.6vw,64px) !important; }
   .right-panel input { height: clamp(45px, 2.4vw, 72px)  !important; font-size: clamp(16px,1.6vw,22px); }
-  .btn.checkout { height: clamp(44px, 2.6vw, 64px)  !important; font-size: clamp(16px,1.6vw,22px); }
+  .btn.checkout { height: clamp(65px, 2.6vw, 64px)  !important; font-size: clamp(16px,1.6vw,22px); }
 }
 
   /* High-density landscape devices (e.g. Android 240dpi landscape):
@@ -1506,7 +1517,7 @@ th, td {
     }
 
     .right-panel input {
-      height: clamp(64px, 6.5vh, 100px) !important;
+      height: clamp(64px, 8.5vh, 100px) !important;
       font-size: clamp(18px, 2.8vh, 28px) !important;
       padding: 8px 12px !important;
     }

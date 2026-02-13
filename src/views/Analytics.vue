@@ -10,6 +10,7 @@ import { format } from 'date-fns'
 // --------------------
 const totalSales = ref(0)
 const totalItems = ref(0)
+const voidedSalesCount = ref(0)
 
 // --------------------
 // Charts
@@ -22,6 +23,7 @@ const calendarOptions = ref({})
 const calendarSeries = ref([])
 
 const DAILY_TARGET = 40000
+const isLoading = ref(false)
 
 // --------------------
 // Date Range & Labels
@@ -107,15 +109,25 @@ const loadAnalytics = async () => {
 // --------------------
 // Build Charts & Metrics
 // --------------------
-const updateCharts = () => {
+const updateCharts = async () => {
+  isLoading.value = true
+  // Simulate processing time
+  await new Promise(resolve => setTimeout(resolve, 300))
   const startDate = getStartDate()
   const endDate = getEndDate()
 
-  // Filter sales
+  // Filter sales (exclude voided sales)
   const filteredSales = sales.filter(s => {
     const d = new Date(s.purchased_date || s.date)
-    return d >= startDate && d <= endDate
+    return d >= startDate && d <= endDate && s.status !== 'voided'
   })
+
+  // Voided sales for metric
+  const voidedSales = sales.filter(s => {
+    const d = new Date(s.purchased_date || s.date)
+    return d >= startDate && d <= endDate && s.status === 'voided'
+  })
+  voidedSalesCount.value = voidedSales.length
 
   const filteredSaleItems = saleItems.filter(item => {
     return filteredSales.some(s => String(s.id) === String(item.sale_id))
@@ -236,14 +248,21 @@ const updateCharts = () => {
     yaxis:{title:{text:'Month/Week'}} ,
     tooltip:{y:{formatter: val => `₱${val.toLocaleString()}`}}
   }
+  isLoading.value = false
 }
 
-watch([timeRange, customStart, customEnd], updateCharts)
+watch([timeRange, customStart, customEnd], () => updateCharts())
 onMounted(loadAnalytics)
 </script>
 
 <template>
 <div class="analytics-page">
+  <!-- Loading Overlay -->
+  <div v-if="isLoading" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Loading analytics...</p>
+  </div>
+
   <div class="page-header">
     <h1>Analytics</h1>
   </div>
@@ -265,6 +284,7 @@ onMounted(loadAnalytics)
   <div class="metrics-cards top-bar">
     <MetricCard :title="salesLabel" :value="totalSales" type="currency" />
     <MetricCard :title="itemsLabel" :value="totalItems" type="number" />
+    <MetricCard title="Voided Sales" :value="voidedSalesCount" type="number" />
   </div>
 
   <!-- Charts -->
@@ -342,5 +362,38 @@ onMounted(loadAnalytics)
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   padding: 16px;
   flex: 1 1 300px;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+.loading-overlay p {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 </style>
