@@ -123,6 +123,30 @@ watch(search, async (val) => {
     medicinesMap.value[m.id] = m
   }
 
+  // Sort: prioritize items that START with the search term
+  matches.sort((a, b) => {
+    const aName = a.name.toLowerCase()
+    const bName = b.name.toLowerCase()
+    const aGeneric = (a.generic_name || '').toLowerCase()
+    const bGeneric = (b.generic_name || '').toLowerCase()
+    
+    const aStartsWithName = aName.startsWith(q)
+    const bStartsWithName = bName.startsWith(q)
+    const aStartsWithGeneric = aGeneric.startsWith(q)
+    const bStartsWithGeneric = bGeneric.startsWith(q)
+    
+    // Both start with search term or neither starts
+    if ((aStartsWithName || aStartsWithGeneric) && (bStartsWithName || bStartsWithGeneric)) {
+      return aName.localeCompare(bName)
+    }
+    if (!(aStartsWithName || aStartsWithGeneric) && !(bStartsWithName || bStartsWithGeneric)) {
+      return aName.localeCompare(bName)
+    }
+    
+    // One starts with search term, prioritize it
+    return (aStartsWithName || aStartsWithGeneric) ? -1 : 1
+  })
+
   filteredMedicines.value = matches
 })
 
